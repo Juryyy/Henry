@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import ProgressBar from '@/components/ProgressBar.vue'
-import { addWeeks, formatWeekRange, weekDays, type WeekKey } from '@/lib/date'
+import WeekStrip from '@/components/WeekStrip.vue'
+import { addWeeks, formatWeekRange, type WeekKey } from '@/lib/date'
 import { blocks as fmtBlocks, num, steps as fmtSteps, walkTime } from '@/lib/format'
-import { dayStatus, summarizeWeek } from '@/lib/engine'
+import { summarizeWeek } from '@/lib/engine'
 import {
   canDeclareBankruptcy,
   currentWeek,
   declareBankruptcy,
   state,
+  streakData,
   today,
   toggleTaskDone,
 } from '@/stores/app'
@@ -24,14 +26,6 @@ function shift(delta: number): void {
   if (next > currentWeek.value) return
   viewWeek.value = next
 }
-
-const dayCells = computed(() =>
-  weekDays(viewWeek.value).map((date, index) => ({
-    index,
-    label: ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'][index],
-    ...dayStatus(state, date, today.value),
-  })),
-)
 
 /* Uzavřené týdny ------------------------------------------------------- */
 
@@ -56,6 +50,9 @@ function doBankruptcy(): void {
 }
 
 const totalDebt = computed(() => summary.value.steps.debtIn)
+
+/** Kolik bloků jde za týden vůbec stihnout – strop dluhu z toho vychází. */
+const maxBlocks = computed(() => state.settings.exercise.blocksPerDay * 7)
 
 function paceLabel(pace: string): { text: string; cls: string } {
   switch (pace) {
@@ -89,24 +86,10 @@ function paceLabel(pace: string): { text: string; cls: string } {
     <div class="stack">
       <!-- Dny --------------------------------------------------------- -->
       <section class="card">
-        <div class="days">
-          <div v-for="cell in dayCells" :key="cell.date" class="day-cell">
-            <div class="tiny faint">{{ cell.label }}</div>
-            <div
-              class="dot"
-              :class="{
-                full: cell.counts && !cell.isFuture,
-                part: !cell.counts && cell.score > 0 && !cell.isFuture,
-                future: cell.isFuture,
-              }"
-            >
-              <span v-if="cell.restDay">z</span>
-            </div>
-            <div class="tiny faint num">{{ cell.isFuture ? '' : Math.round(cell.score) }}</div>
-          </div>
-        </div>
-        <p class="tiny faint center" style="margin-top: 8px">
-          Skóre dne = půl kroky, půl bloky. Od 60 se den počítá do série.
+        <WeekStrip :week="viewWeek" :today="today" />
+        <p class="tiny faint center" style="margin-top: 12px">
+          Den se počítá do série, když z něj máš aspoň 60 % – půl za kroky, půl za bloky.
+          Modrá je den odpočinku.
         </p>
       </section>
 
@@ -156,7 +139,9 @@ function paceLabel(pace: string): { text: string; cls: string } {
           <div class="line total"><span>Zbývá</span><span class="num">{{ summary.blocks.remaining }}</span></div>
         </div>
         <p class="tiny faint" style="margin-top: 8px">
-          Z 21 možných bloků se vyžaduje {{ summary.blocks.base }} – jeden celý den v týdnu smíš vynechat.
+          Z {{ maxBlocks }} možných bloků se vyžaduje {{ summary.blocks.base }} –
+          {{ state.settings.exercise.graceDaysPerWeek }} {{ state.settings.exercise.graceDaysPerWeek === 1 ? 'den' : 'dny' }}
+          v týdnu smíš vynechat bez postihu.
         </p>
       </section>
 
@@ -182,6 +167,25 @@ function paceLabel(pace: string): { text: string; cls: string } {
         </ul>
         <p class="tiny faint" style="margin-top: 10px">
           Nesplněný úkol se přenáší, ale maximálně o jeden kus – tři posilovny v jednom týdnu nikdo nedá.
+        </p>
+      </section>
+
+      <!-- Série -------------------------------------------------------- -->
+      <section v-if="isCurrent" class="card">
+        <div class="card-title">Série</div>
+        <div class="row-between">
+          <div>
+            <div class="big-number">{{ streakData.days }}</div>
+            <div class="tiny faint">{{ streakData.days === 1 ? 'den' : streakData.days < 5 ? 'dny' : 'dní' }} v řadě</div>
+          </div>
+          <div class="right">
+            <div class="strong num">{{ streakData.freezesLeft }}</div>
+            <div class="tiny faint">záchran v záloze</div>
+          </div>
+        </div>
+        <p class="tiny faint" style="margin-top: 10px">
+          Jeden propadlý den za sedm dní sérii neshodí – spotřebuje záchranu. Kolik jich máš,
+          se řídí nastavením „dny milosti“.
         </p>
       </section>
 
@@ -243,32 +247,7 @@ function paceLabel(pace: string): { text: string; cls: string } {
 </template>
 
 <style scoped>
-.days { display: flex; gap: 4px; }
-
-.day-cell {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.dot {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border-strong);
-  display: grid;
-  place-items: center;
-  font-size: 0.7rem;
-  color: var(--text-faint);
-}
-
-.dot.full { background: var(--accent); border-color: var(--accent); }
-.dot.part { background: var(--surface-3); border-color: var(--border-strong); }
-.dot.future { opacity: 0.4; }
-
-.rows { margin-top: 12px; }
+.rows { margin-top: 14px; }
 
 .line {
   display: flex;
@@ -318,4 +297,6 @@ function paceLabel(pace: string): { text: string; cls: string } {
 }
 
 .ledger + .ledger { border-top: 1px solid var(--border); }
+
+.right { text-align: right; }
 </style>

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import TabBar from '@/components/TabBar.vue'
+import MilestoneToast from '@/components/MilestoneToast.vue'
 import { applyUpdate, isIos, isStandalone, updateAvailable } from '@/lib/sw-client'
 import { maybeSync } from '@/lib/sync'
 
@@ -49,6 +50,7 @@ function dismissHint(): void {
     </RouterView>
 
     <TabBar v-if="showTabs" />
+    <MilestoneToast v-if="showTabs" />
   </div>
 </template>
 

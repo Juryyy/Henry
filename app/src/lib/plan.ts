@@ -17,7 +17,7 @@
  * jen z pravidelnosti (Ingram et al. 2024: ~10 min na svalovou skupinu týdně).
  */
 
-import { EXERCISES, getExercise } from '@/data/exercises'
+import { getExercise } from '@/data/exercises'
 import { daysBetween, hashString } from './date'
 import type { AppState, BlockPlan, BlockSlot, Exercise, PlanItem } from './types'
 import type { DateKey } from './date'
@@ -246,9 +246,4 @@ export function doseLabel(exercise: Exercise, item: PlanItem): string {
   if (exercise.mode === 'reps') return `${item.sets}× ${item.dose} opakování`
   if (exercise.mode === 'time_per_side') return `${item.sets}× ${item.dose} s na každou stranu`
   return `${item.sets}× ${item.dose} s`
-}
-
-/** Kolik cviků z katalogu je vůbec k dispozici (pro nastavení). */
-export function catalogueSize(): number {
-  return EXERCISES.length
 }

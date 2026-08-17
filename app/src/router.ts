@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
+import { state } from './stores/app'
 
 /**
  * Hash historie schválně – appka takhle funguje i na GitHub Pages nebo
@@ -6,6 +7,12 @@ import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-rou
  */
 
 const routes: RouteRecordRaw[] = [
+  {
+    path: '/start',
+    name: 'start',
+    component: () => import('./views/OnboardingView.vue'),
+    meta: { title: 'Vítej', fullscreen: true, public: true },
+  },
   {
     path: '/',
     name: 'dnes',
@@ -69,6 +76,16 @@ export const router = createRouter({
   scrollBehavior(_to, _from, saved) {
     return saved ?? { top: 0 }
   },
+})
+
+/**
+ * Dokud uživatel neprojde úvodním průvodcem, nemá smysl ho pouštět do appky –
+ * viděl by výchozí cíle, které o něm nic neví.
+ */
+router.beforeEach((to) => {
+  if (to.meta.public) return true
+  if (state.settings.onboardedAt) return true
+  return { name: 'start' }
 })
 
 router.afterEach((to) => {

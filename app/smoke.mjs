@@ -29,6 +29,11 @@ const probe = await probeCtx.newPage()
 watch(probe)
 await probe.goto(BASE, { waitUntil: 'networkidle' })
 await probe.waitForSelector('h1')
+// Průvodce se objeví při prvním spuštění – proklikat, ať se stav uloží.
+if (await probe.getByRole('button', { name: 'Přeskočit' }).count()) {
+  await probe.getByRole('button', { name: 'Přeskočit' }).click()
+  await probe.waitForTimeout(400)
+}
 await probe.getByRole('button', { name: '+500' }).first().click()
 await probe.waitForTimeout(600)
 const baseState = await probe.evaluate(() => localStorage.getItem('henry.state.v1'))
@@ -46,6 +51,7 @@ const seeded = (() => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }
   s.settings.name = 'Martine'
+  s.settings.onboardedAt = new Date().toISOString()
   s.settings.startDate = iso(30)
   s.settings.steps.weeklyTarget = 38500
   s.days = {}
@@ -84,7 +90,12 @@ const seeded = (() => {
   return JSON.stringify(s)
 })()
 
-const ctx = await browser.newContext({ ...devices['iPhone 14'], isMobile: true, hasTouch: true })
+const ctx = await browser.newContext({
+  ...devices['iPhone 14'],
+  isMobile: true,
+  hasTouch: true,
+  colorScheme: 'dark',
+})
 await ctx.addInitScript((value) => {
   localStorage.setItem('henry.state.v1', value)
   localStorage.setItem('henry.installHintDismissed', '1')

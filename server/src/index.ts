@@ -153,6 +153,7 @@ app.post('/api/sync', requireAuth, json, (req: Request, res: Response) => {
 
   if (schedule && typeof schedule === 'object') {
     db.schedule = { ...DEFAULT_SCHEDULE, ...db.schedule, ...schedule }
+    db.schedule.blocksPerDay = Math.max(1, Math.min(3, Number(db.schedule.blocksPerDay) || 3))
     markDirty()
   }
 

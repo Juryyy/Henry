@@ -19,6 +19,7 @@
  */
 
 import {
+  addDays,
   addWeeks,
   daysBetween,
   elapsedDaysInWeek,
@@ -34,7 +35,6 @@ import type {
   DayLog,
   LedgerEntry,
   LedgerKind,
-  Measurement,
   WeeklyTask,
   WeeklyTaskLog,
 } from './types'
@@ -48,18 +48,24 @@ export function averageDailyStepTarget(state: AppState): number {
   return Math.round(state.settings.steps.weeklyTarget / 7)
 }
 
-/** Cíl kroků pro konkrétní den podle rozložení Po–Ne. */
-export function dailyStepTarget(state: AppState, date: DateKey): number {
-  // Hodnoty chodí z formuláře, kde `v-model.number` u prázdného pole vrací
-  // prázdný řetězec. Bez převodu by `reduce` pole spojil místo sečetl.
-  const dist = state.settings.steps.distribution.map((v) => {
+/**
+ * Rozložení týdne převedené na podíly, které dávají dohromady 1.
+ * Když je nastavení rozbité (samé nuly, texty z formuláře), vrací rovnoměrné.
+ */
+export function normalizedDistribution(state: AppState): number[] {
+  const raw = state.settings.steps.distribution.map((v) => {
     const n = Number(v)
     return Number.isFinite(n) && n >= 0 ? n : 0
   })
-  const sum = dist.reduce((a, b) => a + b, 0)
-  if (sum <= 0) return Math.round(state.settings.steps.weeklyTarget / 7)
-  const share = dist[weekdayIndex(date)] ?? sum / 7
-  return Math.round((state.settings.steps.weeklyTarget * share) / sum)
+  const sum = raw.reduce((a, b) => a + b, 0)
+  if (sum <= 0) return Array.from({ length: 7 }, () => 1 / 7)
+  return raw.map((v) => v / sum)
+}
+
+/** Cíl kroků pro konkrétní den podle rozložení Po–Ne. */
+export function dailyStepTarget(state: AppState, date: DateKey): number {
+  const share = normalizedDistribution(state)[weekdayIndex(date)] ?? 1 / 7
+  return Math.round(state.settings.steps.weeklyTarget * share)
 }
 
 /** Kolik bloků cvičení se za týden reálně vyžaduje (dny milosti se odečítají). */
@@ -80,8 +86,14 @@ export function weeklyBlockTarget(state: AppState): number {
  * pro nezvyklé šlachy ne.
  */
 export function debtCap(state: AppState, kind: LedgerKind): number {
-  if (kind === 'steps') return Math.round(averageDailyStepTarget(state) * state.settings.steps.debtCapDays)
-  return state.settings.exercise.debtCapBlocks
+  if (kind === 'steps') {
+    return Math.round(averageDailyStepTarget(state) * state.settings.steps.debtCapDays)
+  }
+  // Bloků se dá za týden odcvičit jen omezený počet. Kdyby byl strop vyšší
+  // než volné místo mezi týdenním cílem a tímhle maximem, vznikl by dluh,
+  // který nejde nikdy splatit – a Henry by donekonečna hlásil nesplněno.
+  const headroom = Math.max(0, state.settings.exercise.blocksPerDay * 7 - weeklyBlockTarget(state))
+  return Math.min(state.settings.exercise.debtCapBlocks, headroom)
 }
 
 /** Strop kreditu podle druhu. */
@@ -99,10 +111,6 @@ export function creditCap(state: AppState, kind: LedgerKind): number {
 /* ------------------------------------------------------------------ */
 /*  Načítání dat z týdne                                               */
 /* ------------------------------------------------------------------ */
-
-export function getDay(state: AppState, date: DateKey): DayLog | undefined {
-  return state.days[date]
-}
 
 /** Počet dokončených bloků daného dne. */
 export function completedBlocks(day: DayLog | undefined): number {
@@ -217,8 +225,12 @@ export interface TaskSummary {
 function paceOf(achieved: number, required: number, expected: number, daysRemaining: number): PaceStatus {
   if (required <= 0 || achieved >= required) return 'done'
   if (achieved >= expected) return achieved > expected * 1.15 ? 'ahead' : 'on-track'
+
   const shortfall = expected - achieved
-  if (daysRemaining <= 1 || shortfall > required * 0.25) return 'critical'
+  // Poslední den je přísnější, ale ne absolutně – kdo je v neděli na 95 %,
+  // nemá vidět červenou.
+  if (shortfall > required * 0.25) return 'critical'
+  if (daysRemaining <= 1 && shortfall > required * 0.1) return 'critical'
   return 'behind'
 }
 
@@ -237,24 +249,44 @@ function elapsedFraction(daysElapsed: number, isCurrent: boolean, minutesNow: nu
   return Math.max(0, daysElapsed - 1) + progress
 }
 
+interface KindInput {
+  achieved: number
+  achievedToday: number
+  elapsed: number
+  daysRemaining: number
+  /** Podíl dnešního dne na zbytku týdne (1 = rovnoměrně). */
+  todayWeight: number
+  /** Součet podílů zbývajících dní včetně dneška. */
+  remainingWeight: number
+}
+
 function summarizeKind(
   state: AppState,
   week: WeekKey,
   kind: LedgerKind,
-  achieved: number,
-  achievedToday: number,
-  elapsed: number,
-  daysRemaining: number,
+  input: KindInput,
 ): KindSummary {
+  const { achieved, achievedToday, elapsed, daysRemaining, todayWeight, remainingWeight } = input
+
   const base = kind === 'steps' ? state.settings.steps.weeklyTarget : weeklyBlockTarget(state)
   const { debt, credit } = carryInto(state, week, kind)
-  const required = Math.max(0, base + debt - credit)
+
+  // U uzavřeného týdne platí to, co bylo v knize – jinak by změna nastavení
+  // zpětně přepsala historii a starý týden by se najednou tvářil jinak.
+  const closed = findEntry(state, week, kind)
+  const required = closed ? closed.required : Math.max(0, base + debt - credit)
   const remaining = Math.max(0, required - achieved)
   const perRemainingDay = daysRemaining > 0 ? Math.ceil(remaining / daysRemaining) : remaining
 
+  // Dnešní porce respektuje rozložení týdne: když má sobota v nastavení
+  // vyšší podíl, dostane víc než středa.
   const beforeToday = Math.max(0, achieved - achievedToday)
   const todayShare =
-    daysRemaining > 0 ? Math.ceil(Math.max(0, required - beforeToday) / daysRemaining) : 0
+    daysRemaining > 0 && remainingWeight > 0
+      ? // Epsilon je tam kvůli dělení podílů: 1/7 v plovoucí čárce vyjde
+        // o vlásek nad celé číslo a `ceil` by z 5 000 udělal 5 001.
+        Math.ceil((Math.max(0, required - beforeToday) * todayWeight) / remainingWeight - 1e-6)
+      : 0
   const todayRemaining = Math.max(0, todayShare - achievedToday)
 
   const expectedByNow = Math.round((required * Math.min(7, elapsed)) / 7)
@@ -292,13 +324,34 @@ export function summarizeWeek(
   const stepsToday = isCurrent ? (state.days[today]?.steps ?? 0) : 0
   const blocksToday = isCurrent ? completedBlocks(state.days[today]) : 0
 
+  const todayIndex = weekdayIndex(today)
+  const dist = normalizedDistribution(state)
+  const stepWeights = {
+    todayWeight: isCurrent ? (dist[todayIndex] ?? 1 / 7) : 0,
+    remainingWeight: isCurrent ? dist.slice(todayIndex).reduce((a, b) => a + b, 0) : 0,
+  }
+  // Bloky se rozdělují rovnoměrně – nastavení rozložení se týká jen kroků.
+  const blockWeights = { todayWeight: 1, remainingWeight: daysRemaining }
+
   return {
     week,
     isCurrent,
     daysElapsed,
     daysRemaining,
-    steps: summarizeKind(state, week, 'steps', weekSteps(state, week), stepsToday, elapsed, daysRemaining),
-    blocks: summarizeKind(state, week, 'blocks', weekBlocks(state, week), blocksToday, elapsed, daysRemaining),
+    steps: summarizeKind(state, week, 'steps', {
+      achieved: weekSteps(state, week),
+      achievedToday: stepsToday,
+      elapsed,
+      daysRemaining,
+      ...stepWeights,
+    }),
+    blocks: summarizeKind(state, week, 'blocks', {
+      achieved: weekBlocks(state, week),
+      achievedToday: blocksToday,
+      elapsed,
+      daysRemaining,
+      ...blockWeights,
+    }),
     tasks: summarizeTasks(state, week),
   }
 }
@@ -554,52 +607,95 @@ export function dayStatus(state: AppState, date: DateKey, today: DateKey = today
 }
 
 /**
- * Série splněných dní. Dnešek se do série započítá jen když už je splněný –
- * rozdělaný den ji ale nepřeruší (jinak by ráno každému spadla na nulu).
+ * Série splněných dní – se záchranami.
+ *
+ * Jeden vynechaný den sérii neshodí. Za každých sedm dní se smí propadnout
+ * tolikrát, kolik je nastaveno „dnů milosti“; teprve další propadnutí sérii
+ * ukončí. Bez téhle pojistky by první nemoc nebo služebka shodila měsíc práce
+ * na nulu – a přesně v tu chvíli lidi appky mažou.
+ *
+ * Dnešek je zvláštní případ: dokud neskončil, může být rozdělaný. Do série
+ * se započítá, až když je splněný, ale nesplněný ji nepřeruší.
  */
-export function currentStreak(state: AppState, today: DateKey = todayKey()): number {
-  let streak = 0
-  let cursor = today
+export interface StreakInfo {
+  /** Délka série ve dnech. */
+  days: number
+  /** Kolik záchran je ještě k dispozici v posledních sedmi dnech. */
+  freezesLeft: number
+  /** Kolik jich už série spotřebovala. */
+  freezesUsed: number
+  /** Je dnešek splněný? */
+  todayDone: boolean
+}
+
+/** Kolik propadnutí za sedm dní série unese. */
+function freezeBudget(state: AppState): number {
+  return Math.max(0, Math.min(6, state.settings.exercise.graceDaysPerWeek))
+}
+
+export function streakInfo(state: AppState, today: DateKey = todayKey()): StreakInfo {
+  const budget = freezeBudget(state)
   const first = state.settings.startDate
+  const todayDone = dayStatus(state, today, today).counts
 
-  if (dayStatus(state, today, today).counts) streak = 1
-  cursor = shiftBack(cursor)
+  let days = todayDone ? 1 : 0
+  let freezesUsed = 0
+  /** Propadlé dny, které série „zaplatila“ záchranou, od nejnovějšího. */
+  let misses: DateKey[] = []
 
-  while (daysBetween(first, cursor) >= 0) {
-    if (!dayStatus(state, cursor, today).counts) break
-    streak++
-    cursor = shiftBack(cursor)
+  let cursor = addDays(today, -1)
+  // Pojistka proti nesmyslně staré startDate po importu cizích dat.
+  for (let guard = 0; guard < 3660 && daysBetween(first, cursor) >= 0; guard++) {
+    if (dayStatus(state, cursor, today).counts) {
+      days++
+    } else {
+      misses = misses.filter((m) => daysBetween(cursor, m) <= 6)
+      if (misses.length >= budget) break
+      misses.push(cursor)
+      freezesUsed++
+    }
+    cursor = addDays(cursor, -1)
   }
-  return streak
+
+  const recentMisses = misses.filter((m) => daysBetween(m, today) <= 6).length
+  return {
+    days,
+    freezesUsed,
+    freezesLeft: Math.max(0, budget - recentMisses),
+    todayDone,
+  }
 }
 
-function shiftBack(date: DateKey): DateKey {
-  const [y, m, d] = date.split('-').map(Number)
-  const dt = new Date(y, m - 1, d, 12)
-  dt.setDate(dt.getDate() - 1)
-  const yy = dt.getFullYear()
-  const mm = String(dt.getMonth() + 1).padStart(2, '0')
-  const dd = String(dt.getDate()).padStart(2, '0')
-  return `${yy}-${mm}-${dd}`
+/** Zkratka pro místa, kde stačí samotné číslo. */
+export function currentStreak(state: AppState, today: DateKey = todayKey()): number {
+  return streakInfo(state, today).days
 }
 
-/** Nejdelší série v historii. */
+/** Nejdelší série v historii, počítaná stejnými pravidly včetně záchran. */
 export function longestStreak(state: AppState, today: DateKey = todayKey()): number {
-  const dates = Object.keys(state.days).sort()
-  if (dates.length === 0) return 0
+  const budget = freezeBudget(state)
+  const first = state.settings.startDate
+  const total = daysBetween(first, today)
+  if (total < 0) return 0
+
   let best = 0
   let run = 0
-  let prev: DateKey | undefined
-  for (const date of dates) {
-    if (daysBetween(today, date) > 0) continue
-    const ok = dayStatus(state, date, today).counts
-    if (ok) {
-      run = prev && daysBetween(prev, date) === 1 ? run + 1 : 1
+  let misses: DateKey[] = []
+
+  for (let i = 0; i <= Math.min(total, 3660); i++) {
+    const date = addDays(first, i)
+    if (dayStatus(state, date, today).counts) {
+      run++
       best = Math.max(best, run)
-    } else {
-      run = 0
+      continue
     }
-    prev = date
+    misses = misses.filter((m) => daysBetween(m, date) <= 6)
+    if (misses.length >= budget) {
+      run = 0
+      misses = []
+    } else {
+      misses.push(date)
+    }
   }
   return best
 }
@@ -607,10 +703,6 @@ export function longestStreak(state: AppState, today: DateKey = todayKey()): num
 /* ------------------------------------------------------------------ */
 /*  Míry                                                               */
 /* ------------------------------------------------------------------ */
-
-export function latestMeasurement(state: AppState): Measurement | undefined {
-  return [...state.measurements].sort((a, b) => a.date.localeCompare(b.date)).at(-1)
-}
 
 /** Vývoj jedné veličiny v čase, seřazeno vzestupně. */
 export function measurementSeries(

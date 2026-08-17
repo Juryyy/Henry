@@ -9,13 +9,13 @@ import {
 } from '@/lib/date'
 import {
   closeDueWeeks,
-  currentStreak,
   dailyStepTarget,
   dayStatus,
-  latestMeasurement,
   longestStreak,
+  streakInfo,
   summarizeWeek,
 } from '@/lib/engine'
+import { checkMilestones, type Milestone } from '@/lib/milestones'
 import { exportState, flushState, importState, loadState, saveState } from '@/lib/storage'
 import type {
   AppState,
@@ -54,11 +54,16 @@ watch(
 /*  Životní cyklus                                                     */
 /* ------------------------------------------------------------------ */
 
+/** Milníky, které padly od posledního otevření – zobrazí se jako gratulace. */
+export const freshMilestones = ref<Milestone[]>([])
+
 /** Zkontroluje, jestli nezačal nový den / týden, a doúčtuje dluhovou knihu. */
 export function refreshClock(): void {
   const key = todayKey()
   if (key !== today.value) today.value = key
   closeDueWeeks(state, today.value)
+  const fresh = checkMilestones(state, today.value)
+  if (fresh.length > 0) freshMilestones.value = [...freshMilestones.value, ...fresh]
 }
 
 export function initStore(): void {
@@ -87,11 +92,11 @@ export const todayStatus = computed(() => dayStatus(state, today.value, today.va
 
 export const weekSummary = computed(() => summarizeWeek(state, currentWeek.value, today.value))
 
-export const streak = computed(() => currentStreak(state, today.value))
+export const streakData = computed(() => streakInfo(state, today.value))
+
+export const streak = computed(() => streakData.value.days)
 
 export const bestStreak = computed(() => longestStreak(state, today.value))
-
-export const lastMeasurement = computed(() => latestMeasurement(state))
 
 /**
  * Kolik kroků má uživatel dnes ujít. Bere v úvahu dluh: zbytek týdne se
@@ -101,9 +106,6 @@ export const stepsNeededToday = computed(() => weekSummary.value.steps.todayRema
 
 /** Celá dnešní porce kroků včetně už nachozených. */
 export const stepPortionToday = computed(() => weekSummary.value.steps.todayShare)
-
-/** Základní denní cíl podle rozložení, bez vlivu dluhu. */
-export const baseStepTarget = computed(() => dailyStepTarget(state, today.value))
 
 /* ------------------------------------------------------------------ */
 /*  Akce – dny a kroky                                                 */
@@ -241,6 +243,12 @@ export function removeTask(taskId: string): void {
 /* ------------------------------------------------------------------ */
 
 export function saveMeasurement(m: Measurement): void {
+  // Milníky se přepočítají hned, ne až zítra – nová naměřená hodnota je
+  // přesně ten okamžik, kdy má gratulace smysl.
+  queueMicrotask(() => {
+    const fresh = checkMilestones(state, today.value)
+    if (fresh.length > 0) freshMilestones.value = [...freshMilestones.value, ...fresh]
+  })
   const idx = state.measurements.findIndex((x) => x.date === m.date)
   const clean: Measurement = { ...m }
   if (idx >= 0) state.measurements[idx] = { ...state.measurements[idx], ...clean }
@@ -293,6 +301,14 @@ export function exportJson(): string {
 export function importJson(json: string): void {
   const next = importState(json)
   persistPaused = true
+  // Nejdřív vyprázdnit, teprve pak naplnit. Prosté `Object.assign` by nechalo
+  // viset staré dny a míry, které v záloze nejsou.
+  state.days = {}
+  state.weeklyTaskLogs = {}
+  state.measurements = []
+  state.ledger = []
+  state.bankruptcies = []
+  state.achievements = {}
   Object.assign(state, next)
   persistPaused = false
   flushState(state)
@@ -332,6 +348,7 @@ export function buildSnapshot() {
     steps: status.steps,
     stepsNeededToday: week.steps.todayRemaining,
     stepPortionToday: week.steps.todayShare,
+    blocksPerDay: state.settings.exercise.blocksPerDay,
     stepTarget: status.stepTarget,
     blocksDone: status.blocksDone,
     blocksTarget: status.blocksTarget,

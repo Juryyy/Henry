@@ -60,6 +60,7 @@ export async function syncWithServer(
   notifications: NotificationSettings,
   snapshot: Record<string, unknown>,
   timezone: string,
+  blocksPerDay: number,
 ): Promise<{ serverSteps: ServerStepEntry | null }> {
   const url = api(server, '/api/sync')
   if (!url) throw new Error('Server není nastavený.')
@@ -71,6 +72,7 @@ export async function syncWithServer(
       schedule: {
         enabled: notifications.enabled,
         timezone,
+        blocksPerDay,
         blockTimes: notifications.blockTimes,
         stepCheckTime: notifications.stepCheckTime,
         stepCheckThreshold: notifications.stepCheckThreshold,

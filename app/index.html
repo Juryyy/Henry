@@ -22,9 +22,14 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="mask-icon" href="./favicon.svg" color="#4ade80" />
 
-    <!-- Barva pozadí ještě než se načte CSS, aby to neproblikávalo bíle -->
+    <!-- Barva pozadí ještě než se načte CSS, aby to neproblikávalo.
+         Musí respektovat režim zařízení – natvrdo tmavá by ve světlém
+         režimu prosvítala pod obsahem stránky. -->
     <style>
-      html { background: #0f1115; }
+      html { background: #0c0e13; }
+      @media (prefers-color-scheme: light) {
+        html { background: #f2f4f8; }
+      }
       #app-loading {
         position: fixed; inset: 0; display: grid; place-items: center;
         font: 500 15px/1.4 system-ui, sans-serif; color: #6b7280;

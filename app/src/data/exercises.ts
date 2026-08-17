@@ -1538,14 +1538,6 @@ export function getExercise(id: string): Exercise | undefined {
   return BY_ID.get(id)
 }
 
-export function exercisesByCategory(category: Exercise['category']): Exercise[] {
-  return EXERCISES.filter((e) => e.category === category)
-}
-
-export function exercisesByTag(tag: string): Exercise[] {
-  return EXERCISES.filter((e) => e.tags.includes(tag))
-}
-
 export const CATEGORY_LABELS: Record<Exercise['category'], string> = {
   core: 'Střed těla',
   strength: 'Síla',

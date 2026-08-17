@@ -120,23 +120,6 @@ export function relativeDayLabel(key: DateKey, today: DateKey = todayKey()): str
   return formatDayWithWeekday(key)
 }
 
-/** 'HH:MM' -> počet minut od půlnoci. */
-export function parseClock(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number)
-  return h * 60 + m
-}
-
-/** Počet minut od půlnoci -> 'HH:MM'. */
-export function formatClock(minutes: number): string {
-  const m = ((minutes % 1440) + 1440) % 1440
-  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
-}
-
-/** Aktuální čas jako minuty od půlnoci. */
-export function nowMinutes(now: Date = new Date()): number {
-  return now.getHours() * 60 + now.getMinutes()
-}
-
 /** Sekundy -> '12:05' nebo '1:02:05'. */
 export function formatDuration(seconds: number): string {
   const s = Math.max(0, Math.round(seconds))

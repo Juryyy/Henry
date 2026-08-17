@@ -13,3 +13,8 @@ server/dist/
 app/.smoke/
 
 *.local
+
+# Playwright
+app/test-results/
+app/playwright-report/
+app/blob-report/

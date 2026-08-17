@@ -3,17 +3,21 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import ProgressRing from '@/components/ProgressRing.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
+import WeekStrip from '@/components/WeekStrip.vue'
 import { formatDay, weekdayLong } from '@/lib/date'
-import { num, steps as fmtSteps, walkTime } from '@/lib/format'
+import { num, parseNumber, steps as fmtSteps, walkTime } from '@/lib/format'
 import { buildDay, blockEmoji } from '@/lib/plan'
 import type { PaceStatus } from '@/lib/engine'
 import {
   addSteps,
+  currentWeek,
   isBlockDone,
+  setNote,
+  setRestDay,
   setSteps,
   state,
   stepsNeededToday,
-  streak,
+  streakData,
   today,
   todayLog,
   todayStatus,
@@ -24,43 +28,25 @@ import {
 const router = useRouter()
 
 const plans = computed(() => buildDay(state, today.value))
+const week = computed(() => weekSummary.value)
 
 const walked = computed(() => todayStatus.value.steps)
 const needed = computed(() => stepsNeededToday.value)
-const ringPercent = computed(() => {
-  const goal = walked.value + needed.value
-  return goal > 0 ? (walked.value / goal) * 100 : 100
-})
+const portion = computed(() => week.value.steps.todayShare)
+const ringPercent = computed(() => (portion.value > 0 ? (walked.value / portion.value) * 100 : 100))
 
-const week = computed(() => weekSummary.value)
 const debt = computed(() => week.value.steps.debtIn)
+const restDay = computed(() => !!todayLog.value?.restDay)
 
 const greeting = computed(() => {
   const h = new Date().getHours()
   const name = state.settings.name?.trim()
-  const base = h < 10 ? 'Dobré ráno' : h < 17 ? 'Ahoj' : 'Dobrý večer'
-  return name ? `${base}, ${name}` : base
+  const long = h < 10 ? 'Dobré ráno' : h < 17 ? 'Ahoj' : 'Dobrý večer'
+  if (!name) return long
+  // „Dobrý večer, Bartoloměji“ by se zalomilo přes dva řádky a rozhodilo
+  // hlavičku. S delším jménem se použije kratší pozdrav, ne holé jméno.
+  return long.length + name.length > 16 ? `Ahoj, ${name}` : `${long}, ${name}`
 })
-
-const blocksDone = computed(() => todayStatus.value.blocksDone)
-
-/* Rychlé přidání kroků ------------------------------------------------ */
-
-const quickInput = ref<string>('')
-
-function saveQuick(): void {
-  const value = Number(quickInput.value.replace(/\s/g, ''))
-  if (Number.isFinite(value) && value >= 0) {
-    setSteps(today.value, value, 'manual')
-    quickInput.value = ''
-  }
-}
-
-const QUICK_ADDS = [500, 1000, 2000]
-
-/* Týdenní úkoly ------------------------------------------------------- */
-
-const openTasks = computed(() => week.value.tasks.filter((t) => t.remaining > 0))
 
 /**
  * Barva se řídí tempem vůči tomu, kde bys touhle dobou měl být – ne holým
@@ -82,6 +68,39 @@ function paceColor(pace: PaceStatus): string {
 }
 
 const stepColor = computed(() => paceColor(week.value.steps.pace))
+
+/* Kroky --------------------------------------------------------------- */
+
+const quickInput = ref<string | number>('')
+const QUICK_ADDS = [500, 1000, 2000]
+
+function saveQuick(): void {
+  const value = parseNumber(quickInput.value)
+  if (value === null || value < 0) return
+  setSteps(today.value, value, 'manual')
+  quickInput.value = ''
+}
+
+/* Poznámka a volno ----------------------------------------------------- */
+
+const noteOpen = ref(false)
+const noteDraft = ref('')
+
+function openNote(): void {
+  noteDraft.value = todayLog.value?.note ?? ''
+  noteOpen.value = true
+}
+
+function saveNote(): void {
+  setNote(today.value, noteDraft.value)
+  noteOpen.value = false
+}
+
+/* Úkoly ---------------------------------------------------------------- */
+
+const openTasks = computed(() => week.value.tasks.filter((t) => t.remaining > 0))
+const blocksDone = computed(() => todayStatus.value.blocksDone)
+const allBlocksDone = computed(() => blocksDone.value >= plans.value.length)
 </script>
 
 <template>
@@ -92,14 +111,20 @@ const stepColor = computed(() => paceColor(week.value.steps.pace))
         <h1>{{ greeting }}</h1>
       </div>
       <div class="row" style="gap: 8px">
-        <div v-if="streak > 0" class="badge badge-accent" title="Série splněných dní">
-          🔥 {{ streak }}
+        <div
+          v-if="streakData.days > 0"
+          class="badge badge-accent"
+          :title="`Série ${streakData.days} dní · záchrany ${streakData.freezesLeft}`"
+        >
+          🔥 {{ streakData.days }}
         </div>
         <!-- Jediná cesta do nastavení – v dolní liště na něj není místo. -->
-        <RouterLink to="/nastaveni" class="gear" aria-label="Nastavení">
+        <RouterLink to="/nastaveni" class="icon-btn" aria-label="Nastavení">
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+            <circle cx="12" cy="12" r="3.1" />
+            <path
+              d="M19.1 14.6a1.6 1.6 0 0 0 .32 1.77l.06.06a1.94 1.94 0 1 1-2.75 2.75l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.47v.17a1.94 1.94 0 1 1-3.88 0v-.09a1.6 1.6 0 0 0-1.05-1.47 1.6 1.6 0 0 0-1.77.32l-.06.06a1.94 1.94 0 1 1-2.75-2.75l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-.97H3.1a1.94 1.94 0 1 1 0-3.88h.09a1.6 1.6 0 0 0 1.47-1.05 1.6 1.6 0 0 0-.32-1.77l-.06-.06A1.94 1.94 0 1 1 7.03 4.2l.06.06a1.6 1.6 0 0 0 1.77.32h.08a1.6 1.6 0 0 0 .97-1.47V3.1a1.94 1.94 0 1 1 3.88 0v.09a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a1.94 1.94 0 1 1 2.75 2.75l-.06.06a1.6 1.6 0 0 0-.32 1.77v.08a1.6 1.6 0 0 0 1.47.97h.17a1.94 1.94 0 1 1 0 3.88h-.09a1.6 1.6 0 0 0-1.47.97z"
+            />
           </svg>
         </RouterLink>
       </div>
@@ -107,28 +132,30 @@ const stepColor = computed(() => paceColor(week.value.steps.pace))
 
     <div class="stack">
       <!-- Kroky ------------------------------------------------------- -->
-      <section class="card steps-card">
-        <div class="row" style="gap: 18px">
+      <section class="card card-hero">
+        <div class="hero-top">
           <ProgressRing
             :percent="ringPercent"
             :marker="week.steps.required > 0 ? (week.steps.expectedByNow / week.steps.required) * 100 : null"
             :color="stepColor"
-            :size="132"
+            :size="124"
+            :thickness="11"
           >
-            <div class="value num">{{ num(walked) }}</div>
-            <div class="sub">z {{ num(walked + needed) }}</div>
+            <div class="ring-value num">{{ num(walked) }}</div>
+            <div class="ring-sub tiny">z {{ num(portion) }}</div>
           </ProgressRing>
 
-          <div class="grow stack-sm">
-            <div>
-              <div class="tiny faint">Dnes ještě</div>
-              <div class="big-number" :style="{ color: stepColor }">
-                {{ needed > 0 ? num(needed) : 'hotovo' }}
-              </div>
-              <div class="tiny muted">{{ needed > 0 ? walkTime(needed) : 'Denní porce je doma.' }}</div>
+          <div class="grow">
+            <div class="eyebrow" style="margin-bottom: 2px">
+              {{ restDay ? 'Dnes je volno' : 'Dnes ještě' }}
             </div>
-            <div class="tiny faint">
-              Cíl dne {{ num(walked + needed) }} · týdně {{ num(week.steps.required) }}
+            <div class="display" :style="{ color: restDay ? 'var(--info)' : stepColor }">
+              {{ restDay ? '—' : needed > 0 ? num(needed) : 'hotovo' }}
+            </div>
+            <div class="tiny muted" style="margin-top: 4px">
+              <template v-if="restDay">Den odpočinku se do série počítá.</template>
+              <template v-else-if="needed > 0">{{ walkTime(needed) }}</template>
+              <template v-else>Denní porce je doma.</template>
             </div>
           </div>
         </div>
@@ -145,34 +172,40 @@ const stepColor = computed(() => paceColor(week.value.steps.pace))
             type="number"
             inputmode="numeric"
             placeholder="Zapsat kroky z hodinek…"
+            aria-label="Zapsat kroky"
             @keyup.enter="saveQuick"
           />
-          <button class="btn btn-sm btn-primary" :disabled="!quickInput" @click="saveQuick">Uložit</button>
+          <button class="btn btn-primary" :disabled="!quickInput" @click="saveQuick">Uložit</button>
         </div>
 
-        <div v-if="todayLog?.stepsSource === 'shortcut'" class="tiny faint" style="margin-top: 6px">
-          Automaticky z Apple Health.
+        <div class="divider" style="margin: 16px 0 12px" />
+        <WeekStrip :week="currentWeek" :today="today" />
+
+        <div v-if="todayLog?.stepsSource === 'shortcut'" class="tiny faint" style="margin-top: 12px">
+          Kroky přišly automaticky z Apple Health.
         </div>
       </section>
 
       <!-- Dluh -------------------------------------------------------- -->
-      <RouterLink v-if="debt > 0" to="/tyden" class="card debt-card">
+      <RouterLink v-if="debt > 0" to="/tyden" class="card debt-card link-plain">
         <div class="row-between">
           <div>
-            <div class="strong c-warn">Dluh z minulého týdne: {{ num(debt) }}</div>
+            <div class="strong c-warn">Z minulého týdne visí {{ num(debt) }} kroků</div>
             <div class="tiny muted">
-              Rozpustil se do zbytku týdne. Denní porce je proto vyšší než obvykle.
+              Rozpustilo se to do zbytku týdne, proto je dnešní porce vyšší než obvykle.
             </div>
           </div>
-          <span class="faint">›</span>
+          <span class="faint" aria-hidden="true">›</span>
         </div>
       </RouterLink>
 
       <!-- Bloky cvičení ----------------------------------------------- -->
       <section>
-        <div class="row-between" style="margin-bottom: 8px">
+        <div class="row-between" style="margin-bottom: 10px">
           <h2>Cvičení</h2>
-          <span class="tiny faint">{{ blocksDone }}/{{ plans.length }} hotovo</span>
+          <span class="badge" :class="allBlocksDone ? 'badge-accent' : ''">
+            {{ blocksDone }}/{{ plans.length }} hotovo
+          </span>
         </div>
         <div class="stack-sm">
           <button
@@ -188,22 +221,24 @@ const stepColor = computed(() => paceColor(week.value.steps.pace))
               <span class="tiny muted">{{ plan.subtitle }}</span>
             </span>
             <span class="meta">
-              <span class="tiny faint">{{ Math.round(plan.totalSeconds / 60) }} min</span>
-              <span class="check" :class="{ on: isBlockDone(today, plan.slot) }">✓</span>
+              <span class="tiny faint num">{{ Math.round(plan.totalSeconds / 60) }} min</span>
+              <span class="check" :class="{ on: isBlockDone(today, plan.slot) }" aria-hidden="true">✓</span>
             </span>
           </button>
         </div>
       </section>
 
       <!-- Týden ------------------------------------------------------- -->
-      <RouterLink to="/tyden" class="card week-card">
-        <div class="row-between" style="margin-bottom: 10px">
+      <RouterLink to="/tyden" class="card link-plain">
+        <div class="row-between" style="margin-bottom: 12px">
           <div class="card-title" style="margin: 0">Týden</div>
-          <span class="tiny faint">{{ week.daysRemaining }} dní zbývá</span>
+          <span class="tiny faint">
+            {{ week.daysRemaining }} {{ week.daysRemaining === 1 ? 'den' : week.daysRemaining < 5 ? 'dny' : 'dní' }} zbývá
+          </span>
         </div>
         <div class="stack-sm">
           <div>
-            <div class="row-between tiny" style="margin-bottom: 4px">
+            <div class="row-between tiny" style="margin-bottom: 5px">
               <span class="muted">Kroky</span>
               <span class="num muted">{{ num(week.steps.achieved) }} / {{ num(week.steps.required) }}</span>
             </div>
@@ -215,15 +250,11 @@ const stepColor = computed(() => paceColor(week.value.steps.pace))
             />
           </div>
           <div>
-            <div class="row-between tiny" style="margin-bottom: 4px">
+            <div class="row-between tiny" style="margin-bottom: 5px">
               <span class="muted">Bloky</span>
               <span class="num muted">{{ week.blocks.achieved }} / {{ week.blocks.required }}</span>
             </div>
-            <ProgressBar
-              :percent="week.blocks.progressPct"
-              :marker="week.blocks.required > 0 ? (week.blocks.expectedByNow / week.blocks.required) * 100 : null"
-              :color="paceColor(week.blocks.pace)"
-            />
+            <ProgressBar :percent="week.blocks.progressPct" :color="paceColor(week.blocks.pace)" />
           </div>
         </div>
       </RouterLink>
@@ -233,17 +264,54 @@ const stepColor = computed(() => paceColor(week.value.steps.pace))
         <div class="card-title">Zbývá tenhle týden</div>
         <ul class="list-reset stack-sm">
           <li v-for="t in openTasks" :key="t.task.id" class="task-row">
-            <button class="tick" @click="toggleTaskDone(t.task.id)" :aria-label="`Splnit ${t.task.title}`" />
+            <button class="tick" :aria-label="`Splnit ${t.task.title}`" @click="toggleTaskDone(t.task.id)" />
             <span class="grow">
               {{ t.task.emoji }} {{ t.task.title }}
-              <span v-if="t.target > 1" class="tiny faint">({{ t.done }}/{{ t.target }})</span>
+              <span v-if="t.target > 1" class="tiny faint num">{{ t.done }}/{{ t.target }}</span>
             </span>
-            <span v-if="t.carried > 0" class="badge badge-warn tiny">z minula</span>
+            <span v-if="t.carried > 0" class="badge badge-warn">z minula</span>
           </li>
         </ul>
       </section>
 
-      <p class="tiny faint center" style="margin-top: 4px">
+      <!-- Volno a poznámka -------------------------------------------- -->
+      <section class="card">
+        <div class="row-between">
+          <div class="grow">
+            <div class="strong small">Den odpočinku</div>
+            <div class="tiny faint">
+              Nemoc, služebka, opravdu nabitý den. Nezapočítá se jako propadnutí.
+            </div>
+          </div>
+          <button
+            class="switch"
+            role="switch"
+            :aria-checked="restDay"
+            aria-label="Označit dnešek jako den odpočinku"
+            @click="setRestDay(today, !restDay)"
+          >
+            <span class="knob" />
+          </button>
+        </div>
+
+        <div class="divider" style="margin: 14px 0 12px" />
+
+        <div v-if="!noteOpen">
+          <button class="note-btn" @click="openNote">
+            <span v-if="todayLog?.note" class="small">{{ todayLog.note }}</span>
+            <span v-else class="small faint">Přidat poznámku k dnešku…</span>
+          </button>
+        </div>
+        <div v-else class="stack-sm">
+          <textarea v-model="noteDraft" placeholder="Co se dnes povedlo nebo nepovedlo…" maxlength="500" />
+          <div class="row" style="gap: 8px">
+            <button class="btn btn-sm btn-primary" @click="saveNote">Uložit poznámku</button>
+            <button class="btn btn-sm btn-ghost" @click="noteOpen = false">Zrušit</button>
+          </div>
+        </div>
+      </section>
+
+      <p class="tiny faint center">
         {{ fmtSteps(week.steps.remaining) }} do splnění týdne · {{ walkTime(week.steps.remaining) }}
       </p>
     </div>
@@ -251,34 +319,25 @@ const stepColor = computed(() => paceColor(week.value.steps.pace))
 </template>
 
 <style scoped>
-.steps-card .value { font-size: 1.5rem; }
-
-.gear {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-dim);
+.hero-top {
+  display: flex;
+  align-items: center;
+  gap: 18px;
 }
 
-.gear svg {
-  width: 19px;
-  height: 19px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.ring-value {
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
 }
+
+.ring-sub { color: var(--text-faint); margin-top: 1px; }
 
 .adds {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  margin-top: 14px;
+  gap: 7px;
+  margin-top: 18px;
 }
 
 .quick-row {
@@ -290,48 +349,45 @@ const stepColor = computed(() => paceColor(week.value.steps.pace))
 .quick-row input { flex: 1; }
 
 .debt-card {
-  display: block;
-  text-decoration: none;
-  color: inherit;
-  border-color: color-mix(in srgb, var(--warn) 40%, var(--border));
-  background: color-mix(in srgb, var(--warn-soft) 60%, var(--surface));
+  border-color: var(--warn-line);
+  background: color-mix(in srgb, var(--warn-soft) 55%, var(--surface));
 }
 
 .block-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 13px;
   width: 100%;
-  padding: 13px 14px;
+  padding: 14px 15px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--r);
   text-align: left;
   cursor: pointer;
-  transition: transform 0.08s ease, border-color 0.15s ease;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.12s var(--ease), border-color 0.2s var(--ease);
 }
 
 .block-row:active { transform: scale(0.99); }
-.block-row.done { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.block-row.done { border-color: var(--accent-line); }
 
-.block-row .emoji { font-size: 1.35rem; }
+.block-row .emoji { font-size: 1.4rem; line-height: 1; }
 
 .block-row .text {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  min-width: 0;
 }
 
 .block-row .meta {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
 }
 
 .check {
-  width: 26px;
-  height: 26px;
+  width: 27px;
+  height: 27px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -339,32 +395,69 @@ const stepColor = computed(() => paceColor(week.value.steps.pace))
   color: transparent;
   font-size: 0.8rem;
   font-weight: 700;
+  transition: background 0.22s var(--ease), border-color 0.22s var(--ease), color 0.22s var(--ease);
 }
 
 .check.on {
   background: var(--accent);
   border-color: var(--accent);
-  color: #06120b;
+  color: var(--accent-ink);
 }
-
-.week-card { display: block; text-decoration: none; color: inherit; }
 
 .task-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   font-size: 0.92rem;
 }
 
 .tick {
-  width: 24px;
-  height: 24px;
+  width: 25px;
+  height: 25px;
   flex-shrink: 0;
   border-radius: 50%;
   border: 1.5px solid var(--border-strong);
   background: transparent;
   cursor: pointer;
+  transition: background 0.18s var(--ease);
 }
 
 .tick:active { background: var(--surface-3); }
+
+.switch {
+  width: 50px;
+  height: 30px;
+  flex-shrink: 0;
+  padding: 3px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--surface-3);
+  cursor: pointer;
+  transition: background 0.24s var(--ease);
+}
+
+.switch[aria-checked='true'] { background: var(--info); }
+
+.knob {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.26s var(--ease);
+}
+
+.switch[aria-checked='true'] .knob { transform: translateX(20px); }
+
+.note-btn {
+  width: 100%;
+  text-align: left;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1.5;
+}
 </style>

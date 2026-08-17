@@ -54,6 +54,8 @@ export interface StateSnapshot {
 export interface ScheduleConfig {
   enabled: boolean
   timezone: string
+  /** Kolik bloků uživatel denně cvičí – tolik připomínek smí odejít. */
+  blocksPerDay: number
   blockTimes: string[]
   stepCheckTime: string
   stepCheckThreshold: number
@@ -92,6 +94,7 @@ export interface Database {
 export const DEFAULT_SCHEDULE: ScheduleConfig = {
   enabled: true,
   timezone: config.timezone,
+  blocksPerDay: 3,
   blockTimes: ['07:15', '12:30', '20:00'],
   stepCheckTime: '17:45',
   stepCheckThreshold: 60,

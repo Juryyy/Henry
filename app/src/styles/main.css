@@ -1,29 +1,41 @@
 /* ==================================================================
    Henry – designové tokeny a základní styly
-   Mobile first, tmavé téma jako výchozí (appka se používá ráno a večer).
+
+   Tmavé téma je výchozí: appka se používá hlavně ráno a večer, kdy je
+   svítící bílá plocha do očí. Světlé je plnohodnotné, ne odvozené
+   převrácením – barvy jsou v něm vybrané zvlášť.
    ================================================================== */
 
 :root {
   color-scheme: dark light;
 
-  --bg: #0f1115;
-  --bg-elevated: #171a21;
-  --surface: #1a1e26;
-  --surface-2: #222731;
-  --surface-3: #2b313d;
-  --border: #2a3039;
-  --border-strong: #3a424f;
+  /* --- plochy ---------------------------------------------------- */
+  --bg: #0c0e13;
+  --bg-soft: #10131a;
+  --surface: #161a22;
+  --surface-2: #1d222c;
+  --surface-3: #272d39;
+  --border: #232935;
+  --border-strong: #333b4a;
 
-  --text: #e9ecf1;
-  --text-dim: #a5adbb;
-  --text-faint: #6f7887;
+  /* Jemný světlý přechod nahoře dává kartě hranu, aniž by bylo potřeba stín. */
+  --edge: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0) 60%);
 
+  /* --- text ------------------------------------------------------ */
+  --text: #eef1f6;
+  --text-dim: #a8b1c0;
+  --text-faint: #6e7889;
+
+  /* --- akcent ---------------------------------------------------- */
   --accent: #4ade80;
-  --accent-dim: #22a45d;
-  --accent-soft: rgba(74, 222, 128, 0.14);
+  --accent-strong: #22c55e;
+  --accent-ink: #05130a;
+  --accent-soft: rgba(74, 222, 128, 0.15);
+  --accent-line: rgba(74, 222, 128, 0.35);
 
   --warn: #fbbf24;
   --warn-soft: rgba(251, 191, 36, 0.14);
+  --warn-line: rgba(251, 191, 36, 0.32);
   --danger: #f87171;
   --danger-soft: rgba(248, 113, 113, 0.14);
   --info: #60a5fa;
@@ -31,16 +43,23 @@
   --violet: #a78bfa;
   --violet-soft: rgba(167, 139, 250, 0.14);
 
-  --radius-sm: 10px;
-  --radius: 16px;
-  --radius-lg: 22px;
+  /* --- geometrie ------------------------------------------------- */
+  --r-sm: 10px;
+  --r: 16px;
+  --r-lg: 22px;
+  --r-xl: 28px;
 
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 14px 34px rgba(0, 0, 0, 0.3);
+
+  /* --- pohyb ----------------------------------------------------- */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, 'Helvetica Neue', Arial, sans-serif;
 
-  --tabbar-height: 58px;
-  --page-max: 580px;
+  --tabbar-height: 60px;
+  --page-max: 600px;
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -48,32 +67,38 @@
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
-    --bg: #f4f6f9;
-    --bg-elevated: #ffffff;
+    --bg: #f2f4f8;
+    --bg-soft: #ffffff;
     --surface: #ffffff;
-    --surface-2: #eef1f6;
-    --surface-3: #e2e7ef;
-    --border: #dfe4ec;
-    --border-strong: #c6cedb;
+    --surface-2: #f1f4f9;
+    --surface-3: #e3e8f0;
+    --border: #e2e7ef;
+    --border-strong: #c3cbd8;
 
-    --text: #12161d;
-    --text-dim: #545d6c;
-    --text-faint: #7d8698;
+    --edge: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 60%);
 
-    --accent: #16a34a;
-    --accent-dim: #15803d;
-    --accent-soft: rgba(22, 163, 74, 0.12);
+    --text: #0e1219;
+    --text-dim: #4d5769;
+    --text-faint: #7a8496;
+
+    --accent: #15a34a;
+    --accent-strong: #12833c;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(21, 163, 74, 0.11);
+    --accent-line: rgba(21, 163, 74, 0.3);
 
     --warn: #b45309;
-    --warn-soft: rgba(180, 83, 9, 0.12);
-    --danger: #dc2626;
-    --danger-soft: rgba(220, 38, 38, 0.1);
+    --warn-soft: rgba(180, 83, 9, 0.1);
+    --warn-line: rgba(180, 83, 9, 0.28);
+    --danger: #d32f2f;
+    --danger-soft: rgba(211, 47, 47, 0.09);
     --info: #2563eb;
-    --info-soft: rgba(37, 99, 235, 0.1);
+    --info-soft: rgba(37, 99, 235, 0.09);
     --violet: #7c3aed;
-    --violet-soft: rgba(124, 58, 237, 0.1);
+    --violet-soft: rgba(124, 58, 237, 0.09);
 
-    --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.06);
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.07);
+    --shadow: 0 1px 3px rgba(15, 23, 42, 0.07), 0 12px 28px rgba(15, 23, 42, 0.06);
   }
 }
 
@@ -94,6 +119,10 @@ body {
   height: 100%;
 }
 
+/* Pozadí patří na html – body končí tam, kde končí obsah, a pod ním by
+   prosvítala barva z prvotního vykreslení. */
+html { background: var(--bg); }
+
 body {
   background: var(--bg);
   color: var(--text);
@@ -101,6 +130,7 @@ body {
   font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   -webkit-tap-highlight-color: transparent;
   /* Bez tohohle iOS v standalone režimu „gumuje“ celou stránku. */
   overscroll-behavior-y: none;
@@ -108,12 +138,13 @@ body {
 
 h1, h2, h3, h4 {
   margin: 0;
-  font-weight: 650;
-  letter-spacing: -0.015em;
+  font-weight: 680;
+  letter-spacing: -0.021em;
+  line-height: 1.2;
 }
 
-h1 { font-size: 1.6rem; }
-h2 { font-size: 1.15rem; }
+h1 { font-size: 1.7rem; }
+h2 { font-size: 1.18rem; }
 h3 { font-size: 1rem; }
 
 p { margin: 0 0 0.75em; }
@@ -131,13 +162,13 @@ textarea {
 
 ul, ol { margin: 0; padding-left: 1.25em; }
 
+::selection { background: var(--accent-soft); }
+
 /* ---------------------------------------------------------------- */
 /*  Layout                                                           */
 /* ---------------------------------------------------------------- */
 
-#app {
-  min-height: 100%;
-}
+#app { min-height: 100%; }
 
 .app-shell {
   min-height: 100dvh;
@@ -150,7 +181,7 @@ ul, ol { margin: 0; padding-left: 1.25em; }
   width: 100%;
   max-width: var(--page-max);
   margin: 0 auto;
-  padding: calc(var(--safe-top) + 14px) 16px calc(var(--tabbar-height) + var(--safe-bottom) + 24px);
+  padding: calc(var(--safe-top) + 16px) 16px calc(var(--tabbar-height) + var(--safe-bottom) + 28px);
 }
 
 .page-header {
@@ -158,44 +189,65 @@ ul, ol { margin: 0; padding-left: 1.25em; }
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
-.page-header .eyebrow {
-  font-size: 0.78rem;
+.eyebrow {
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.09em;
   color: var(--text-faint);
-  font-weight: 600;
+  font-weight: 680;
+  margin-bottom: 3px;
 }
 
 .stack { display: flex; flex-direction: column; gap: 14px; }
-.stack-sm { display: flex; flex-direction: column; gap: 8px; }
+.stack-sm { display: flex; flex-direction: column; gap: 9px; }
 .row { display: flex; align-items: center; gap: 10px; }
 .row-between { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .wrap { flex-wrap: wrap; }
-.grow { flex: 1; }
+.grow { flex: 1; min-width: 0; }
 
 /* ---------------------------------------------------------------- */
 /*  Karty                                                            */
 /* ---------------------------------------------------------------- */
 
 .card {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--r);
   padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Světlá hrana nahoře – dělá z ploché karty předmět, ne obdélník. */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--edge);
+  pointer-events: none;
+}
+
+.card > * { position: relative; }
+
+.card-hero {
+  border-radius: var(--r-xl);
+  padding: 20px;
+  box-shadow: var(--shadow);
 }
 
 .card-tight { padding: 12px 14px; }
 
 .card-title {
-  font-size: 0.8rem;
-  font-weight: 650;
+  font-size: 0.74rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: var(--text-faint);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 /* ---------------------------------------------------------------- */
@@ -207,18 +259,26 @@ ul, ol { margin: 0; padding-left: 1.25em; }
   font-feature-settings: 'tnum' 1;
 }
 
+.display {
+  font-size: 2.9rem;
+  font-weight: 730;
+  line-height: 1;
+  letter-spacing: -0.038em;
+  font-variant-numeric: tabular-nums;
+}
+
 .big-number {
-  font-size: 2.6rem;
-  font-weight: 700;
+  font-size: 2.4rem;
+  font-weight: 710;
   line-height: 1.05;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.032em;
   font-variant-numeric: tabular-nums;
 }
 
 .muted { color: var(--text-dim); }
 .faint { color: var(--text-faint); }
-.small { font-size: 0.85rem; }
-.tiny { font-size: 0.76rem; }
+.small { font-size: 0.875rem; }
+.tiny { font-size: 0.765rem; line-height: 1.45; }
 .strong { font-weight: 650; }
 .center { text-align: center; }
 
@@ -236,27 +296,31 @@ ul, ol { margin: 0; padding-left: 1.25em; }
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 46px;
+  min-height: 48px;
   padding: 0 18px;
-  border-radius: 12px;
+  border-radius: 13px;
   border: 1px solid var(--border-strong);
   background: var(--surface-2);
   color: var(--text);
-  font-weight: 600;
+  font-weight: 640;
   font-size: 0.95rem;
+  letter-spacing: -0.005em;
   cursor: pointer;
-  transition: transform 0.08s ease, background 0.15s ease, opacity 0.15s ease;
+  transition: transform 0.12s var(--ease), background 0.18s var(--ease), opacity 0.18s var(--ease),
+    border-color 0.18s var(--ease);
   user-select: none;
+  -webkit-user-select: none;
 }
 
-.btn:active { transform: scale(0.975); }
-.btn:disabled { opacity: 0.45; cursor: default; }
+.btn:active { transform: scale(0.968); }
+.btn:disabled { opacity: 0.42; cursor: default; }
 .btn:disabled:active { transform: none; }
 
 .btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #06120b;
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  border-color: transparent;
+  color: var(--accent-ink);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset, 0 6px 18px var(--accent-soft);
 }
 
 .btn-ghost {
@@ -265,6 +329,8 @@ ul, ol { margin: 0; padding-left: 1.25em; }
   color: var(--text-dim);
 }
 
+.btn-ghost:active { background: var(--surface-2); }
+
 .btn-danger {
   background: var(--danger-soft);
   border-color: transparent;
@@ -272,25 +338,85 @@ ul, ol { margin: 0; padding-left: 1.25em; }
 }
 
 .btn-block { width: 100%; }
-.btn-sm { min-height: 36px; padding: 0 12px; font-size: 0.85rem; border-radius: 10px; }
-.btn-lg { min-height: 56px; font-size: 1.05rem; border-radius: 14px; }
+.btn-sm { min-height: 38px; padding: 0 13px; font-size: 0.855rem; border-radius: 11px; }
+.btn-lg { min-height: 58px; font-size: 1.05rem; border-radius: 16px; }
+
+/* Kulaté tlačítko s ikonou (zavřít, nastavení). */
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: transform 0.12s var(--ease), background 0.18s var(--ease);
+}
+
+.icon-btn:active { transform: scale(0.94); background: var(--surface-2); }
+
+.icon-btn svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------------------------------------------------------------- */
+/*  Segmentovaný přepínač                                            */
+/* ---------------------------------------------------------------- */
+
+.segmented {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+}
+
+.segmented button {
+  flex: 1;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.875rem;
+  font-weight: 640;
+  cursor: pointer;
+  transition: background 0.18s var(--ease), color 0.18s var(--ease);
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
 
 /* ---------------------------------------------------------------- */
 /*  Formuláře                                                        */
 /* ---------------------------------------------------------------- */
 
-.field { display: flex; flex-direction: column; gap: 6px; }
+.field { display: flex; flex-direction: column; gap: 7px; }
 
 .field label {
-  font-size: 0.82rem;
-  font-weight: 600;
+  font-size: 0.83rem;
+  font-weight: 640;
   color: var(--text-dim);
 }
 
 .field .hint {
-  font-size: 0.76rem;
+  font-size: 0.765rem;
   color: var(--text-faint);
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 input[type='text'],
@@ -302,14 +428,26 @@ input[type='url'],
 select,
 textarea {
   width: 100%;
-  min-height: 46px;
-  padding: 10px 12px;
+  min-height: 48px;
+  padding: 11px 13px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 13px;
   outline: none;
   /* 16px zabrání tomu, aby iOS při fokusu zazoomoval stránku. */
   font-size: 16px;
+  transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+select {
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-faint) 50%),
+    linear-gradient(135deg, var(--text-faint) 50%, transparent 50%);
+  background-position: calc(100% - 19px) 51%, calc(100% - 14px) 51%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 34px;
 }
 
 input:focus,
@@ -319,9 +457,18 @@ textarea:focus {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-textarea { min-height: 80px; resize: vertical; }
+textarea { min-height: 84px; resize: vertical; line-height: 1.5; }
 
-input[type='range'] { accent-color: var(--accent); width: 100%; }
+input[type='range'] {
+  accent-color: var(--accent);
+  width: 100%;
+  min-height: 30px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+input[type='checkbox'] { accent-color: var(--accent); }
 
 /* Šipky u number inputu na mobilu jen překáží. */
 input[type='number']::-webkit-outer-spin-button,
@@ -339,13 +486,14 @@ input[type='number'] { -moz-appearance: textfield; }
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 9px;
+  padding: 4px 10px;
   border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 650;
+  font-size: 0.745rem;
+  font-weight: 680;
   background: var(--surface-2);
   color: var(--text-dim);
   white-space: nowrap;
+  line-height: 1.35;
 }
 
 .badge-accent { background: var(--accent-soft); color: var(--accent); }
@@ -358,10 +506,15 @@ input[type='number'] { -moz-appearance: textfield; }
 /*  Přechody                                                         */
 /* ---------------------------------------------------------------- */
 
-.fade-enter-active,
-.fade-leave-active { transition: opacity 0.15s ease; }
-.fade-enter-from,
+.fade-enter-active { transition: opacity 0.22s var(--ease), transform 0.28s var(--ease); }
+.fade-leave-active { transition: opacity 0.13s var(--ease); }
+.fade-enter-from { opacity: 0; transform: translateY(7px); }
 .fade-leave-to { opacity: 0; }
+
+.pop-enter-active { transition: opacity 0.24s var(--ease), transform 0.36s var(--ease-spring); }
+.pop-leave-active { transition: opacity 0.18s var(--ease), transform 0.18s var(--ease); }
+.pop-enter-from { opacity: 0; transform: translateY(14px) scale(0.97); }
+.pop-leave-to { opacity: 0; transform: scale(0.97); }
 
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -387,10 +540,22 @@ input[type='number'] { -moz-appearance: textfield; }
 
 .scroll-x {
   display: flex;
-  gap: 8px;
+  gap: 7px;
   overflow-x: auto;
-  padding-bottom: 4px;
+  padding: 2px 0 4px;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
 }
 .scroll-x::-webkit-scrollbar { display: none; }
+.scroll-x > * { scroll-snap-align: start; }
+
+/* Odsazení pro obsah, který má „vytéct“ za okraj stránky. */
+.bleed {
+  margin-left: -16px;
+  margin-right: -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.link-plain { text-decoration: none; color: inherit; display: block; }

@@ -147,7 +147,10 @@ function buildSlots(
   const slots: Slot[] = []
   const seed = `${today}-`
 
-  schedule.blockTimes.forEach((time, index) => {
+  // Připomínají se jen bloky, které uživatel opravdu cvičí. Kdyby si nastavil
+  // dva bloky denně, třetí připomínka by ho posílala na něco, co v appce není.
+  const blocks = Math.max(1, Math.min(schedule.blockTimes.length, schedule.blocksPerDay || 3))
+  schedule.blockTimes.slice(0, blocks).forEach((time, index) => {
     const minutes = parseClock(time)
     if (minutes === null) return
     slots.push({

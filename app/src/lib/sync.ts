@@ -46,6 +46,7 @@ export async function syncNow(force = false): Promise<boolean> {
       state.settings.notifications,
       buildSnapshot(),
       state.settings.timezone,
+      state.settings.exercise.blocksPerDay,
     )
 
     // Kroky z Health se berou jako pravda – uživatel je nezapisoval ručně.

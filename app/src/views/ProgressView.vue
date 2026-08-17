@@ -2,9 +2,10 @@
 import { computed, ref } from 'vue'
 import LineChart from '@/components/LineChart.vue'
 import { formatDayShort, relativeDayLabel } from '@/lib/date'
-import { num } from '@/lib/format'
+import { num, parseNumber } from '@/lib/format'
 import { bestStreak, removeMeasurement, saveMeasurement, state, streak, today } from '@/stores/app'
 import { measurementSeries } from '@/lib/engine'
+import { MILESTONES, unlockedCount } from '@/lib/milestones'
 import type { Measurement } from '@/lib/types'
 
 /* Zápis nové míry ------------------------------------------------------ */
@@ -19,10 +20,13 @@ const form = ref({
 
 const showForm = ref(false)
 
+/**
+ * Pole jsou schválně `type="text"` s desetinnou klávesnicí, ne `type="number"`.
+ * Do číselného pole totiž prohlížeč nepustí desetinnou čárku – a Čech, který
+ * napíše „92,4“, by přišel o celou hodnotu.
+ */
 function numberOrUndefined(value: string): number | undefined {
-  if (!value.trim()) return undefined
-  const parsed = Number(value.replace(',', '.'))
-  return Number.isFinite(parsed) ? parsed : undefined
+  return parseNumber(value) ?? undefined
 }
 
 function save(): void {
@@ -66,6 +70,26 @@ const totalBlocks = computed(() =>
 )
 const totalMinutes = computed(() => totalBlocks.value * state.settings.exercise.minutesPerBlock)
 
+/* Milníky --------------------------------------------------------------- */
+
+const milestones = computed(() =>
+  MILESTONES.map((m) => {
+    const unlockedAt = state.achievements[m.id]
+    return {
+      ...m,
+      unlockedAt,
+      // U zamčených ukazujeme, jak daleko to je – jinak je to jen seznam
+      // věcí, které nemám.
+      pct: unlockedAt ? 1 : (m.progress?.(state, today.value) ?? 0),
+    }
+  }).sort((a, b) => {
+    if (!!a.unlockedAt !== !!b.unlockedAt) return a.unlockedAt ? -1 : 1
+    return b.pct - a.pct
+  }),
+)
+
+const unlocked = computed(() => unlockedCount(state))
+
 function toeTouchLabel(cm: number): string {
   if (cm > 0) return `${num(cm)} cm nad zemí`
   if (cm < 0) return `${num(Math.abs(cm))} cm pod úrovní chodidel`
@@ -97,16 +121,16 @@ function toeTouchLabel(cm: number): string {
           <div class="grid2">
             <div class="field">
               <label for="m-weight">Váha (kg)</label>
-              <input id="m-weight" v-model="form.weightKg" type="number" inputmode="decimal" step="0.1" placeholder="např. 92,4" />
+              <input id="m-weight" v-model="form.weightKg" type="text" inputmode="decimal" placeholder="např. 92,4" />
             </div>
             <div class="field">
               <label for="m-waist">Pas (cm)</label>
-              <input id="m-waist" v-model="form.waistCm" type="number" inputmode="decimal" step="0.5" placeholder="např. 104" />
+              <input id="m-waist" v-model="form.waistCm" type="text" inputmode="decimal" placeholder="např. 104" />
             </div>
           </div>
           <div class="field">
             <label for="m-toe">Předklon – vzdálenost prstů od země (cm)</label>
-            <input id="m-toe" v-model="form.toeTouchCm" type="number" inputmode="decimal" step="0.5" placeholder="např. 14" />
+            <input id="m-toe" v-model="form.toeTouchCm" type="text" inputmode="decimal" placeholder="např. 14" />
             <div class="hint">
               Kladné číslo = tolik ti ještě chybí na zem. Až dosáhneš pod úroveň chodidel, piš záporné.
               Měř vždy ve stejnou denní dobu a rozehřátý – ráno je rozsah o 3–5 cm horší než večer,
@@ -115,9 +139,9 @@ function toeTouchLabel(cm: number): string {
           </div>
           <div class="field">
             <label for="m-plank">Prkno – maximální výdrž (s)</label>
-            <input id="m-plank" v-model="form.plankSec" type="number" inputmode="numeric" placeholder="např. 45" />
+            <input id="m-plank" v-model="form.plankSec" type="text" inputmode="numeric" placeholder="např. 45" />
           </div>
-          <button class="btn btn-primary btn-block" @click="save">Uložit</button>
+          <button class="btn btn-primary btn-block" @click="save">Uložit měření</button>
         </div>
       </section>
 
@@ -141,6 +165,27 @@ function toeTouchLabel(cm: number): string {
             <div class="tile-label">bloků ({{ num(totalMinutes) }} min)</div>
           </div>
         </div>
+      </section>
+
+      <!-- Milníky ----------------------------------------------------- -->
+      <section class="card">
+        <div class="row-between" style="margin-bottom: 12px">
+          <div class="card-title" style="margin: 0">Milníky</div>
+          <span class="badge num">{{ unlocked }} / {{ milestones.length }}</span>
+        </div>
+        <ul class="list-reset milestones">
+          <li v-for="m in milestones" :key="m.id" :class="{ locked: !m.unlockedAt }">
+            <span class="m-emoji">{{ m.emoji }}</span>
+            <span class="grow">
+              <span class="small strong">{{ m.title }}</span>
+              <span class="tiny faint">{{ m.detail }}</span>
+              <span v-if="!m.unlockedAt && m.pct > 0.02" class="m-bar" aria-hidden="true">
+                <span :style="{ width: `${Math.round(m.pct * 100)}%` }" />
+              </span>
+            </span>
+            <span v-if="m.unlockedAt" class="badge badge-accent">✓</span>
+          </li>
+        </ul>
       </section>
 
       <!-- Grafy ------------------------------------------------------- -->
@@ -215,6 +260,49 @@ function toeTouchLabel(cm: number): string {
 .tile-label {
   font-size: 0.75rem;
   color: var(--text-faint);
+}
+
+.milestones { display: flex; flex-direction: column; gap: 3px; }
+
+.milestones li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 9px 0;
+}
+
+.milestones li + li { border-top: 1px solid var(--border); }
+.milestones li.locked { opacity: 0.55; }
+
+.milestones .grow { display: flex; flex-direction: column; gap: 2px; }
+
+.m-emoji {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--surface-2);
+  font-size: 1.05rem;
+}
+
+.milestones li:not(.locked) .m-emoji { background: var(--accent-soft); }
+
+.m-bar {
+  display: block;
+  height: 4px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.m-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--text-faint);
 }
 
 .measurement { padding: 8px 0; gap: 8px; align-items: flex-start; }

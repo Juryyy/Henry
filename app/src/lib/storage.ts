@@ -57,7 +57,6 @@ export function defaultSettings(): Settings {
     server: {
       baseUrl: '',
       token: '',
-      vapidPublicKey: '',
     },
   }
 }

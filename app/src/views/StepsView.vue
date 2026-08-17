@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import WeekBars from '@/components/WeekBars.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import { addDays, formatDayWithWeekday, relativeDayLabel, weekDays } from '@/lib/date'
-import { num, walkTime } from '@/lib/format'
+import { num, parseNumber, walkTime } from '@/lib/format'
 import { dailyStepTarget } from '@/lib/engine'
 import { isServerConfigured, lastSyncError, syncing, syncNow } from '@/lib/sync'
 import {
@@ -30,13 +30,13 @@ const avgTarget = computed(() => Math.round(state.settings.steps.weeklyTarget / 
 
 /* Zápis ---------------------------------------------------------------- */
 
-const draft = ref<string>('')
+const draft = ref<string | number>('')
 
 const todaySteps = computed(() => todayLog.value?.steps ?? 0)
 
 function save(): void {
-  const value = Number(draft.value.replace(/\s/g, '').replace(',', '.'))
-  if (!Number.isFinite(value) || value < 0) return
+  const value = parseNumber(draft.value)
+  if (value === null || value < 0) return
   setSteps(today.value, value, 'manual')
   draft.value = ''
 }
@@ -57,11 +57,10 @@ const historyDays = computed(() =>
 )
 
 function commitEdit(date: string, input: HTMLInputElement): void {
-  const raw = input.value.trim()
-  const value = Number(raw.replace(/\s/g, ''))
+  const value = parseNumber(input.value)
   // Prázdné pole neznamená nula. Kdyby ano, stačilo by ťuknout do políčka,
   // omylem ho vymazat a přijít o celý den.
-  if (raw !== '' && Number.isFinite(value) && value >= 0) {
+  if (value !== null && value >= 0) {
     setSteps(date, value, 'manual')
   }
   // Vrátit do pole to, co je opravdu uložené – jinak by tam odmítnutá

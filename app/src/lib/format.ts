@@ -38,14 +38,22 @@ export function walkTime(stepCount: number): string {
   return rest === 0 ? `~${h} h chůze` : `~${h} h ${rest} min chůze`
 }
 
-/** Sekundy -> '15 min' / '2:30' podle kontextu. */
-export function durationShort(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)} s`
-  const m = Math.round(seconds / 60)
-  return `${m} min`
-}
 
-export function signed(value: number, unit = ''): string {
-  const sign = value > 0 ? '+' : ''
-  return `${sign}${num(value)}${unit}`
+/**
+ * Převede vstup z formuláře na číslo.
+ *
+ * Bere jak řetězec, tak číslo: Vue u `v-model` na `<input type="number">`
+ * hodnotu samo převádí na číslo, kdežto u `type="text"` zůstane řetězec.
+ * Zavolat `.replace()` na tom prvním by shodilo celou obsluhu události –
+ * a tlačítko by mlčky nedělalo nic.
+ *
+ * Zvládne i české zápisy: „8 423“, „8 423“ (pevná mezera), „92,4“.
+ */
+export function parseNumber(input: unknown): number | null {
+  if (typeof input === 'number') return Number.isFinite(input) ? input : null
+  if (typeof input !== 'string') return null
+  const cleaned = input.trim().replace(/[\s\u00a0\u202f]/g, '').replace(',', '.')
+  if (!cleaned) return null
+  const value = Number(cleaned)
+  return Number.isFinite(value) ? value : null
 }

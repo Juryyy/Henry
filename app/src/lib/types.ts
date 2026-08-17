@@ -235,8 +235,6 @@ export interface ServerSettings {
   baseUrl: string
   /** Token do hlavičky Authorization. */
   token: string
-  /** VAPID public key ze serveru (načte se automaticky z /api/config). */
-  vapidPublicKey: string
   /** Poslední úspěšná synchronizace. */
   lastSyncAt?: string
 }

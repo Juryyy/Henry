@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { checkHealth, sendTestPush } from '@/lib/api'
 import { num } from '@/lib/format'
 import { EXERCISES } from '@/data/exercises'
+import { debtCap, weeklyBlockTarget } from '@/lib/engine'
 import { isServerConfigured, lastSyncError, syncing, syncNow } from '@/lib/sync'
 import {
   disablePush,
@@ -33,7 +34,16 @@ const debtCapValue = computed(() => Math.round(avgDaily.value * s.value.steps.de
 
 const WEEKDAYS = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne']
 
-const distributionSum = computed(() => s.value.steps.distribution.reduce((a, b) => a + b, 0))
+const distributionSum = computed(() =>
+  s.value.steps.distribution.reduce((a, b) => a + (Number(b) || 0), 0),
+)
+
+/** Kolik bloků je za týden povinných a kolik se jich maximálně přenese. */
+const weeklyBlocks = computed(() => weeklyBlockTarget(state))
+const maxBlockCap = computed(() =>
+  Math.max(0, s.value.exercise.blocksPerDay * 7 - weeklyBlocks.value),
+)
+const effectiveBlockCap = computed(() => debtCap(state, 'blocks'))
 
 function resetDistribution(): void {
   s.value.steps.distribution = [13, 13, 13, 13, 14, 17, 17]
@@ -268,30 +278,47 @@ const confirmReset = ref(false)
         <div class="card-title">Cvičení</div>
         <div class="stack-sm">
           <div class="field">
-            <label for="level">Obtížnost</label>
-            <select id="level" v-model.number="s.exercise.level">
-              <option :value="1">1 – začínám (míň sérií, lehčí varianty)</option>
-              <option :value="2">2 – střední</option>
-              <option :value="3">3 – pokročilé (víc sérií, těžší varianty)</option>
-            </select>
+            <label>Obtížnost</label>
+            <div class="segmented">
+              <button
+                v-for="opt in [1, 2, 3]"
+                :key="opt"
+                :aria-pressed="s.exercise.level === opt"
+                @click="s.exercise.level = opt as 1 | 2 | 3"
+              >
+                {{ ['začátek', 'střední', 'pokročilé'][opt - 1] }}
+              </button>
+            </div>
+            <div class="hint">
+              Nižší úroveň znamená míň sérií a lehčí varianty cviků, ne kratší blok.
+            </div>
           </div>
 
-          <div class="grid2">
-            <div class="field">
-              <label for="blocks">Bloků denně</label>
-              <select id="blocks" v-model.number="s.exercise.blocksPerDay">
-                <option :value="1">1</option>
-                <option :value="2">2</option>
-                <option :value="3">3</option>
-              </select>
+          <div class="field">
+            <label>Bloků denně</label>
+            <div class="segmented">
+              <button
+                v-for="n in 3"
+                :key="n"
+                :aria-pressed="s.exercise.blocksPerDay === n"
+                @click="s.exercise.blocksPerDay = n"
+              >
+                {{ n }}×
+              </button>
             </div>
-            <div class="field">
-              <label for="minutes">Minut na blok</label>
-              <select id="minutes" v-model.number="s.exercise.minutesPerBlock">
-                <option :value="10">10</option>
-                <option :value="15">15</option>
-                <option :value="20">20</option>
-              </select>
+          </div>
+
+          <div class="field">
+            <label>Minut na blok</label>
+            <div class="segmented">
+              <button
+                v-for="m in [10, 15, 20]"
+                :key="m"
+                :aria-pressed="s.exercise.minutesPerBlock === m"
+                @click="s.exercise.minutesPerBlock = m"
+              >
+                {{ m }} min
+              </button>
             </div>
           </div>
 
@@ -305,8 +332,18 @@ const confirmReset = ref(false)
           </div>
 
           <div class="field">
-            <label for="blockdebt">Strop dluhu v blocích: {{ s.exercise.debtCapBlocks }}</label>
-            <input id="blockdebt" v-model.number="s.exercise.debtCapBlocks" type="range" min="0" max="12" step="1" />
+            <label for="blockdebt">
+              Strop dluhu v blocích: {{ effectiveBlockCap }}
+              <span v-if="effectiveBlockCap < s.exercise.debtCapBlocks" class="faint">
+                (výš to nejde)
+              </span>
+            </label>
+            <input id="blockdebt" v-model.number="s.exercise.debtCapBlocks" type="range" min="0" :max="maxBlockCap" step="1" />
+            <div class="hint">
+              Za týden zvládneš nejvýš {{ s.exercise.blocksPerDay * 7 }} bloků a
+              {{ weeklyBlocks }} jich je povinných, takže se dá přenést nanejvýš
+              {{ maxBlockCap }}. Vyšší strop by vyrobil dluh, který nejde splatit.
+            </div>
           </div>
 
           <p class="tiny faint">
@@ -410,20 +447,25 @@ const confirmReset = ref(false)
             </select>
           </div>
 
-          <div class="row wrap" style="gap: 8px">
-            <button
-              v-if="!pushActive"
-              class="btn btn-primary grow"
-              :disabled="pushBusy || !!blockedReason || !isServerConfigured()"
-              @click="turnOnPush"
-            >
-              Zapnout notifikace
+          <button
+            v-if="!pushActive"
+            class="btn btn-primary btn-block"
+            :disabled="pushBusy || !!blockedReason || !isServerConfigured()"
+            @click="turnOnPush"
+          >
+            Zapnout notifikace
+          </button>
+          <button v-else class="btn btn-ghost btn-block" :disabled="pushBusy" @click="turnOffPush">
+            Vypnout notifikace
+          </button>
+
+          <div class="grid2">
+            <button class="btn btn-sm btn-ghost" :disabled="!isServerConfigured()" @click="testPush">
+              Test ze serveru
             </button>
-            <button v-else class="btn btn-ghost grow" :disabled="pushBusy" @click="turnOffPush">
-              Vypnout notifikace
+            <button class="btn btn-sm btn-ghost" :disabled="permission !== 'granted'" @click="testLocal">
+              Test lokálně
             </button>
-            <button class="btn btn-sm btn-ghost" :disabled="!isServerConfigured()" @click="testPush">Test ze serveru</button>
-            <button class="btn btn-sm btn-ghost" :disabled="permission !== 'granted'" @click="testLocal">Test lokálně</button>
           </div>
 
           <p v-if="pushMessage" class="small muted">{{ pushMessage }}</p>

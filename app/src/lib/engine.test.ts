@@ -7,7 +7,10 @@ import {
   currentStreak,
   dailyStepTarget,
   dayStatus,
+  debtCap,
+  longestStreak,
   requiredFor,
+  streakInfo,
   summarizeWeek,
   weeklyBlockTarget,
 } from './engine'
@@ -323,14 +326,58 @@ describe('série', () => {
     expect(currentStreak(s, '2025-08-06')).toBe(2)
   })
 
-  it('zkažený den sérii ukončí', () => {
-    const s = makeState()
+  it('jeden vynechaný den sérii neshodí – spotřebuje záchranu', () => {
+    const s = makeState() // graceDaysPerWeek = 1
     setSteps(s, MON, 5_000)
     doBlocks(s, MON, 3)
     setSteps(s, '2025-08-05', 100) // nesplněno
     setSteps(s, '2025-08-06', 5_000)
     doBlocks(s, '2025-08-06', 3)
-    expect(currentStreak(s, '2025-08-06')).toBe(1)
+
+    const info = streakInfo(s, '2025-08-06')
+    expect(info.days).toBe(2) // pondělí + středa, úterý zachráněno
+    expect(info.freezesUsed).toBe(1)
+    expect(info.freezesLeft).toBe(0)
+  })
+
+  it('druhý propadlý den v témže týdnu už sérii ukončí', () => {
+    const s = makeState()
+    for (const d of [MON, '2025-08-05']) {
+      setSteps(s, d, 5_000)
+      doBlocks(s, d, 3)
+    }
+    setSteps(s, '2025-08-06', 100) // propadlo
+    setSteps(s, '2025-08-07', 100) // propadlo podruhé
+    setSteps(s, '2025-08-08', 5_000)
+    doBlocks(s, '2025-08-08', 3)
+
+    expect(streakInfo(s, '2025-08-08').days).toBe(1)
+  })
+
+  it('bez dnů milosti shodí sérii první propadnutí', () => {
+    const s = makeState((x) => {
+      x.settings.exercise.graceDaysPerWeek = 0
+    })
+    setSteps(s, MON, 5_000)
+    doBlocks(s, MON, 3)
+    setSteps(s, '2025-08-05', 100)
+    setSteps(s, '2025-08-06', 5_000)
+    doBlocks(s, '2025-08-06', 3)
+    expect(streakInfo(s, '2025-08-06').days).toBe(1)
+  })
+
+  it('nejdelší série počítá záchrany stejně jako aktuální', () => {
+    const s = makeState()
+    for (const d of [MON, '2025-08-05']) {
+      setSteps(s, d, 5_000)
+      doBlocks(s, d, 3)
+    }
+    setSteps(s, '2025-08-06', 100) // záchrana
+    for (const d of ['2025-08-07', '2025-08-08']) {
+      setSteps(s, d, 5_000)
+      doBlocks(s, d, 3)
+    }
+    expect(longestStreak(s, '2025-08-08')).toBe(4)
   })
 })
 
@@ -375,8 +422,19 @@ describe('dluh v blocích', () => {
 
     const entry = s.ledger.find((e) => e.week === MON && e.kind === 'blocks')!
     expect(entry.rawDebt).toBe(16)
-    expect(entry.debt).toBe(6) // strop
-    expect(requiredFor(s, NEXT_MON, 'blocks')).toBe(24)
+    // Strop se srazí na to, co jde za týden reálně odcvičit: 21 možných
+    // mínus 18 vyžadovaných = 3 bloky volného místa.
+    expect(entry.debt).toBe(3)
+    expect(requiredFor(s, NEXT_MON, 'blocks')).toBe(21)
+  })
+
+  it('dluh v blocích nikdy nepřeleze to, co jde za týden stihnout', () => {
+    const s = makeState()
+    for (let grace = 0; grace <= 3; grace++) {
+      s.settings.exercise.graceDaysPerWeek = grace
+      const max = s.settings.exercise.blocksPerDay * 7
+      expect(weeklyBlockTarget(s) + debtCap(s, 'blocks')).toBeLessThanOrEqual(max)
+    }
   })
 
   it('přebytek bloků se nepřenáší – protahování se nedá předplatit', () => {

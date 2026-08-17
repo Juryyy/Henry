@@ -471,6 +471,25 @@ describe('regrese', () => {
     expect(carryInto(s, NEXT_MON, 'steps').debt).toBe(0)
   })
 
+  it('opětovné uzavření nezvedne laťku dvakrát', () => {
+    const s = makeState((x) => {
+      x.settings.steps.rampEnabled = true
+      x.settings.steps.rampStep = 3_500
+      x.settings.steps.goalWeeklyTarget = 49_000
+    })
+    for (let i = 0; i < 14; i++) setSteps(s, addDays(MON, i), 6_000)
+
+    closeDueWeeks(s, addDays(MON, 14))
+    const afterFirst = s.settings.steps.weeklyTarget
+    expect(afterFirst).toBe(42_000) // dva splněné týdny, dvakrát +3 500
+
+    // Simulace opravy kroků ze serveru: týdny se otevřou a zavřou znovu.
+    reopenWeeksFrom(s, MON)
+    expect(s.settings.steps.weeklyTarget).toBe(35_000) // zvýšení vzato zpět
+    closeDueWeeks(s, addDays(MON, 14))
+    expect(s.settings.steps.weeklyTarget).toBe(afterFirst)
+  })
+
   it('reopenWeeksFrom u týdne, který v knize není, nic nerozbije', () => {
     const s = makeState()
     setSteps(s, MON, 1_000)

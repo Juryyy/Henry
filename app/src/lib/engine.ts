@@ -420,6 +420,7 @@ function applyRamp(state: AppState, entry: LedgerEntry): void {
   if (s.weeklyTarget >= s.goalWeeklyTarget) return
   const next = Math.min(s.goalWeeklyTarget, s.weeklyTarget + s.rampStep)
   if (next === s.weeklyTarget) return
+  entry.raisedTargetFrom = s.weeklyTarget
   s.weeklyTarget = next
   entry.raisedTargetTo = next
 }
@@ -432,9 +433,19 @@ function applyRamp(state: AppState, entry: LedgerEntry): void {
  * než se stihnou stáhnout data z Health, a vyrobila by dluh z ničeho.
  */
 export function reopenWeeksFrom(state: AppState, week: WeekKey): void {
-  const before = state.ledger.length
+  const removed = state.ledger.filter((e) => daysBetween(week, e.week) >= 0)
+  if (removed.length === 0) return
+
+  // Zvýšení laťky se musí vrátit zpátky, jinak by ho opětovné uzavření
+  // připočetlo znovu a každá oprava kroků by cíl vyšroubovala výš.
+  const raises = removed
+    .filter((e) => e.raisedTargetFrom !== undefined)
+    .sort((a, b) => a.week.localeCompare(b.week))
+  if (raises.length > 0) {
+    state.settings.steps.weeklyTarget = raises[0].raisedTargetFrom as number
+  }
+
   state.ledger = state.ledger.filter((e) => daysBetween(week, e.week) < 0)
-  if (state.ledger.length === before) return
   const previous = addWeeks(week, -1)
   state.lastClosedWeek = state.ledger.some((e) => e.week === previous) ? previous : undefined
 }

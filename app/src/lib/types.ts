@@ -162,6 +162,8 @@ export interface LedgerEntry {
   skipped?: boolean
   /** Nový týdenní cíl, pokud se po tomhle týdnu zvedla laťka. */
   raisedTargetTo?: number
+  /** Cíl před zvýšením – bez něj by se zvýšení nedalo vzít zpět. */
+  raisedTargetFrom?: number
 }
 
 export interface Bankruptcy {

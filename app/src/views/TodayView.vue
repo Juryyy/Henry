@@ -91,8 +91,17 @@ const stepColor = computed(() => paceColor(week.value.steps.pace))
         <div class="eyebrow">{{ weekdayLong(today) }} {{ formatDay(today) }}</div>
         <h1>{{ greeting }}</h1>
       </div>
-      <div v-if="streak > 0" class="badge badge-accent" title="Série splněných dní">
-        🔥 {{ streak }}
+      <div class="row" style="gap: 8px">
+        <div v-if="streak > 0" class="badge badge-accent" title="Série splněných dní">
+          🔥 {{ streak }}
+        </div>
+        <!-- Jediná cesta do nastavení – v dolní liště na něj není místo. -->
+        <RouterLink to="/nastaveni" class="gear" aria-label="Nastavení">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+          </svg>
+        </RouterLink>
       </div>
     </header>
 
@@ -243,6 +252,27 @@ const stepColor = computed(() => paceColor(week.value.steps.pace))
 
 <style scoped>
 .steps-card .value { font-size: 1.5rem; }
+
+.gear {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+}
+
+.gear svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 .adds {
   display: grid;

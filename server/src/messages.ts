@@ -70,7 +70,9 @@ export interface Vars {
 
 function varsFrom(snapshot: StateSnapshot | null): Vars {
   const s = snapshot
-  const missing = Math.max(0, (s?.stepsNeededToday ?? 0) - (s?.steps ?? 0))
+  // `stepsNeededToday` už dnešní nachozené kroky odečítá – je to rovnou
+  // „kolik ještě dnes“. Odečítat je znovu by chybějící počet podstřelilo.
+  const missing = Math.max(0, s?.stepsNeededToday ?? 0)
   return {
     X: missing,
     Y: Math.max(1, Math.round(missing / 100)),

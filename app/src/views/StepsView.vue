@@ -56,19 +56,9 @@ const historyDays = computed(() =>
   })),
 )
 
-const editing = ref<string | null>(null)
-const editValue = ref('')
-
-function startEdit(date: string, current: number): void {
-  editing.value = date
-  editValue.value = current ? String(current) : ''
-}
-
-function commitEdit(): void {
-  if (!editing.value) return
-  const value = Number(editValue.value.replace(/\s/g, ''))
-  if (Number.isFinite(value) && value >= 0) setSteps(editing.value, value, 'manual')
-  editing.value = null
+function commitEdit(date: string, raw: string): void {
+  const value = Number(raw.replace(/\s/g, ''))
+  if (Number.isFinite(value) && value >= 0) setSteps(date, value, 'manual')
 }
 
 /* Server --------------------------------------------------------------- */
@@ -174,23 +164,21 @@ async function pull(): Promise<void> {
                 :color="row.steps >= row.target ? 'var(--accent)' : 'var(--surface-3)'"
               />
             </span>
-            <template v-if="editing === row.date">
-              <input
-                v-model="editValue"
-                class="edit"
-                type="number"
-                inputmode="numeric"
-                autofocus
-                @blur="commitEdit"
-                @keyup.enter="commitEdit"
-              />
-            </template>
-            <button v-else class="value num" @click="startEdit(row.date, row.steps)">
-              {{ num(row.steps) }}
-            </button>
+            <!-- Input je v DOMu pořád. Kdyby se objevil až po kliknutí,
+                 iOS by k němu neotevřel klávesnici – fokus nastavený mimo
+                 přímou reakci na dotek Safari ignoruje. -->
+            <input
+              class="edit num"
+              type="number"
+              inputmode="numeric"
+              :value="row.steps || ''"
+              :aria-label="`Kroky ${row.date}`"
+              placeholder="0"
+              @change="commitEdit(row.date, ($event.target as HTMLInputElement).value)"
+            />
           </li>
         </ul>
-        <p class="tiny faint" style="margin-top: 10px">Klepnutím na číslo ho přepíšeš.</p>
+        <p class="tiny faint" style="margin-top: 10px">Číslo se dá rovnou přepsat.</p>
       </section>
 
       <RouterLink v-if="!isServerConfigured()" to="/nastaveni" class="card link-card">
@@ -230,25 +218,21 @@ async function pull(): Promise<void> {
   color: var(--text-dim);
 }
 
-.value {
-  width: 62px;
+.edit {
+  width: 82px;
   flex-shrink: 0;
+  min-height: 34px;
+  padding: 2px 8px;
   text-align: right;
-  font-size: 0.85rem;
-  background: none;
-  border: 0;
-  padding: 0;
-  color: var(--text);
-  cursor: pointer;
+  /* 16px, aby iOS při fokusu nezoomoval; opticky to sráží menší výška. */
+  font-size: 16px;
+  background: transparent;
+  border-color: transparent;
 }
 
-.edit {
-  width: 78px;
-  flex-shrink: 0;
-  min-height: 32px;
-  padding: 2px 6px;
-  text-align: right;
-  font-size: 0.85rem;
+.edit:focus {
+  background: var(--surface-2);
+  border-color: var(--accent);
 }
 
 .link-card { display: block; text-decoration: none; color: inherit; }

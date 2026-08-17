@@ -50,9 +50,15 @@ export function averageDailyStepTarget(state: AppState): number {
 
 /** Cíl kroků pro konkrétní den podle rozložení Po–Ne. */
 export function dailyStepTarget(state: AppState, date: DateKey): number {
-  const dist = state.settings.steps.distribution
-  const sum = dist.reduce((a, b) => a + b, 0) || 100
-  const share = dist[weekdayIndex(date)] ?? 100 / 7
+  // Hodnoty chodí z formuláře, kde `v-model.number` u prázdného pole vrací
+  // prázdný řetězec. Bez převodu by `reduce` pole spojil místo sečetl.
+  const dist = state.settings.steps.distribution.map((v) => {
+    const n = Number(v)
+    return Number.isFinite(n) && n >= 0 ? n : 0
+  })
+  const sum = dist.reduce((a, b) => a + b, 0)
+  if (sum <= 0) return Math.round(state.settings.steps.weeklyTarget / 7)
+  const share = dist[weekdayIndex(date)] ?? sum / 7
   return Math.round((state.settings.steps.weeklyTarget * share) / sum)
 }
 
@@ -119,7 +125,10 @@ export function weekHasData(state: AppState, week: WeekKey): boolean {
   return weekDays(week).some((d) => {
     const day = state.days[d]
     if (!day) return false
-    return day.steps > 0 || day.blocks.length > 0 || !!day.note || !!day.restDay
+    // Rozdělaný blok se nepočítá. Otevřít obrazovku cvičení a hned ji zavřít
+    // založí prázdný záznam bloku – kdyby stačil, změnil by se tím celý týden
+    // z „appka se nepoužívala“ na „nesplněno“ a naskočil by plný dluh.
+    return day.steps > 0 || day.blocks.some((b) => !!b.completedAt) || !!day.note || !!day.restDay
   })
 }
 
@@ -338,10 +347,13 @@ function closeKind(
   // Nedostatek dat není důkaz nečinnosti, takže z toho nový dluh neděláme –
   // jen protáhneme dál to, co už dlužil.
   if (!weekHasData(state, week)) {
+    const { credit: creditIn } = carryInto(state, week, kind)
     return {
       week, kind, required, achieved,
       debt: Math.min(debtIn, debtCap(state, kind)),
-      rawDebt: debtIn, credit: 0, forgiven: 0, closedAt: now, skipped: true,
+      // Kredit se protahuje dál stejně jako dluh – nachodil si ho poctivě
+      // a týden bez dat není důvod mu ho sebrat.
+      rawDebt: debtIn, credit: creditIn, forgiven: 0, closedAt: now, skipped: true,
     }
   }
 
@@ -410,6 +422,21 @@ function applyRamp(state: AppState, entry: LedgerEntry): void {
   if (next === s.weeklyTarget) return
   s.weeklyTarget = next
   entry.raisedTargetTo = next
+}
+
+/**
+ * Zruší uzávěrky od daného týdne dál, aby se přepočítaly.
+ *
+ * Volá se, když ze serveru dorazí kroky za den, který spadá do už uzavřeného
+ * týdne. Bez toho by appka po týdnu nepoužívání uzavřela týdny s nulou dřív,
+ * než se stihnou stáhnout data z Health, a vyrobila by dluh z ničeho.
+ */
+export function reopenWeeksFrom(state: AppState, week: WeekKey): void {
+  const before = state.ledger.length
+  state.ledger = state.ledger.filter((e) => daysBetween(week, e.week) < 0)
+  if (state.ledger.length === before) return
+  const previous = addWeeks(week, -1)
+  state.lastClosedWeek = state.ledger.some((e) => e.week === previous) ? previous : undefined
 }
 
 function rolloverTasks(state: AppState, week: WeekKey): void {

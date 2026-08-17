@@ -42,6 +42,15 @@ app.use(
 const json = express.json({ limit: '256kb' })
 const bigJson = express.json({ limit: '25mb' })
 
+/**
+ * Apple Shortcuts umí poslat tělo jako „Soubor“ (což je spolehlivější cesta,
+ * než jejich rozbitý skládač JSON) – jenže pak nastaví Content-Type na
+ * text/plain nebo application/octet-stream. Výchozí `express.json()` takové
+ * tělo tiše zahodí a endpoint by hlásil „chybí steps“. Proto tahle varianta
+ * bere cokoli a parsuje to jako JSON.
+ */
+const anyJson = express.json({ limit: '256kb', type: () => true })
+
 /* ------------------------------------------------------------------ */
 /*  Veřejné                                                            */
 /* ------------------------------------------------------------------ */
@@ -171,15 +180,15 @@ app.post('/api/sync', requireAuth, json, (req: Request, res: Response) => {
  * Zápis je vždy upsert podle data. Zkratka může legitimně proběhnout víckrát
  * (ruční test, druhý spouštěč) a přičítání by kroky zdvojnásobilo.
  */
-app.post('/api/ingest/steps', requireAuth, json, (req: Request, res: Response) => {
+app.post('/api/ingest/steps', requireAuth, anyJson, (req: Request, res: Response) => {
   const db = getDb()
   const fallbackDate = zonedNow(db.schedule.timezone).date
-  const body = req.body ?? {}
+  const body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) as Record<string, unknown>
 
   const incoming: { date: string; steps: number }[] = []
 
   if (Array.isArray(body.days)) {
-    for (const row of body.days.slice(0, 60)) {
+    for (const row of (body.days as Record<string, unknown>[]).slice(0, 60)) {
       const steps = coerceSteps(row?.steps ?? row?.value ?? row?.count)
       const date = isValidDateKey(row?.date) ? row.date : null
       if (steps === null || !date) continue

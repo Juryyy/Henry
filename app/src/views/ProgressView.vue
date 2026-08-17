@@ -5,6 +5,7 @@ import { formatDayShort, relativeDayLabel } from '@/lib/date'
 import { num } from '@/lib/format'
 import { bestStreak, removeMeasurement, saveMeasurement, state, streak, today } from '@/stores/app'
 import { measurementSeries } from '@/lib/engine'
+import type { Measurement } from '@/lib/types'
 
 /* Zápis nové míry ------------------------------------------------------ */
 
@@ -25,13 +26,19 @@ function numberOrUndefined(value: string): number | undefined {
 }
 
 function save(): void {
-  saveMeasurement({
-    date: form.value.date,
-    weightKg: numberOrUndefined(form.value.weightKg),
-    waistCm: numberOrUndefined(form.value.waistCm),
-    toeTouchCm: numberOrUndefined(form.value.toeTouchCm),
-    plankSec: numberOrUndefined(form.value.plankSec),
-  })
+  // Prázdná políčka se do záznamu vůbec nedostanou. Kdyby tam šla jako
+  // `undefined`, přepsala by při druhém zápisu téhož dne to, co už bylo
+  // změřené ráno.
+  const patch: Measurement = { date: form.value.date }
+  const weight = numberOrUndefined(form.value.weightKg)
+  const waist = numberOrUndefined(form.value.waistCm)
+  const toe = numberOrUndefined(form.value.toeTouchCm)
+  const plank = numberOrUndefined(form.value.plankSec)
+  if (weight !== undefined) patch.weightKg = weight
+  if (waist !== undefined) patch.waistCm = waist
+  if (toe !== undefined) patch.toeTouchCm = toe
+  if (plank !== undefined) patch.plankSec = plank
+  saveMeasurement(patch)
   form.value = { date: today.value, weightKg: '', waistCm: '', toeTouchCm: '', plankSec: '' }
   showForm.value = false
 }

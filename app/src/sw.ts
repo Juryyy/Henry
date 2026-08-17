@@ -45,6 +45,7 @@ interface PushPayload {
   tag?: string
   renotify?: boolean
   requireInteraction?: boolean
+  silent?: boolean
   actions?: { action: string; title: string }[]
   data?: Record<string, unknown>
 }
@@ -71,6 +72,7 @@ self.addEventListener('push', (event) => {
     tag: payload.tag ?? 'henry',
     renotify: payload.renotify ?? true,
     requireInteraction: payload.requireInteraction ?? false,
+    silent: payload.silent ?? false,
     data: { url: payload.url ?? '#/', ...(payload.data ?? {}) },
     actions: payload.actions,
   } as NotificationOptions
@@ -94,8 +96,12 @@ self.addEventListener('notificationclick', (event) => {
       const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
 
       // Když už appka běží, jen ji vytáhneme do popředí a přepneme routu –
-      // otevírat druhé okno je na mobilu otravné.
+      // otevírat druhé okno je na mobilu otravné. Filtr podle scope je tam
+      // proto, že na stejné doméně může běžet i něco jiného (typicky víc
+      // projektů na GitHub Pages).
+      const scope = self.registration.scope
       for (const client of clientList) {
+        if (!client.url.startsWith(scope)) continue
         if ('focus' in client) {
           await client.focus()
           client.postMessage({ type: 'NAVIGATE', url: target })
@@ -103,8 +109,7 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
 
-      const base = self.registration.scope
-      await self.clients.openWindow(target.startsWith('#') ? `${base}${target}` : target)
+      await self.clients.openWindow(target.startsWith('#') ? `${scope}${target}` : target)
     })(),
   )
 })

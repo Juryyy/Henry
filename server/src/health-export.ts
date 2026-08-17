@@ -66,7 +66,16 @@ export function extractDailySteps(payload: HaePayload): { date: string; steps: n
 export function coerceSteps(raw: unknown): number | null {
   if (typeof raw === 'number') return Number.isFinite(raw) ? Math.round(raw) : null
   if (typeof raw !== 'string') return null
-  const digits = raw.replace(/\D/g, '')
+
+  // Mezery (i pevné) jsou vždycky jen oddělovač tisíců.
+  const cleaned = raw.replace(/[\s\u00a0\u202f]/g, '')
+
+  // Desetinné číslo s jednou nebo dvěma číslicemi za oddělovačem – tři číslice
+  // by byl oddělovač tisíců („8,423“), ne desetinná část.
+  const decimal = /^\d+[.,]\d{1,2}$/.exec(cleaned)
+  if (decimal) return Math.round(Number(cleaned.replace(',', '.')))
+
+  const digits = cleaned.replace(/\D/g, '')
   if (!digits) return null
   const value = Number(digits)
   return Number.isFinite(value) ? value : null

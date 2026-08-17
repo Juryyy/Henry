@@ -89,6 +89,19 @@ function onWorkDone(): void {
   }
 }
 
+/**
+ * Hlavní tlačítko. Po pauze se musí odpočet *dopočítat*, ne spustit znovu –
+ * jinak by pauza v poslední pětině série vrátila celou sérii na začátek.
+ */
+function primaryAction(): void {
+  if (!isTimed.value) {
+    onWorkDone()
+    return
+  }
+  if (timer.remaining.value > 0) timer.resume()
+  else startWork()
+}
+
 function startRest(): void {
   if (!exercise.value) return
   const rest = exercise.value.restSeconds
@@ -135,20 +148,36 @@ function close(): void {
 
 /* Obrazovka nemá při cvičení zhasínat. */
 let wakeLock: { release: () => Promise<void> } | null = null
+/** Odešel uživatel dřív, než se zámek stihl získat? */
+let wakeLockUnwanted = false
 
 onMounted(async () => {
   startedAt.value = Date.now()
   try {
-    const nav = navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }
-    wakeLock = (await nav.wakeLock?.request('screen')) ?? null
+    const nav = navigator as Navigator & {
+      wakeLock?: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> }
+    }
+    const lock = (await nav.wakeLock?.request('screen')) ?? null
+    // Získání zámku je asynchronní. Když se mezitím obrazovka zavřela,
+    // pustíme ho hned – jinak by zůstal viset a telefon by nezhasínal.
+    if (wakeLockUnwanted) void lock?.release().catch(() => {})
+    else wakeLock = lock
   } catch {
     // Bez wake locku to jde taky, jen obrazovka zhasne.
   }
 })
 
 onBeforeUnmount(() => {
+  wakeLockUnwanted = true
   void wakeLock?.release().catch(() => {})
+  wakeLock = null
   timer.reset()
+})
+
+const primaryLabel = computed(() => {
+  if (!isTimed.value) return 'Hotovo'
+  if (timer.remaining.value > 0) return 'Pokračovat'
+  return resting.value ? 'Přeskočit pauzu' : 'Spustit'
 })
 
 const setLabel = computed(() => {
@@ -192,8 +221,8 @@ const setLabel = computed(() => {
         </div>
 
         <div class="row" style="gap: 8px">
-          <button v-if="!timer.running.value" class="btn btn-primary grow btn-lg" @click="isTimed ? startWork() : onWorkDone()">
-            {{ isTimed ? (timer.remaining.value > 0 ? 'Pokračovat' : 'Spustit') : 'Hotovo' }}
+          <button v-if="!timer.running.value" class="btn btn-primary grow btn-lg" @click="primaryAction">
+            {{ primaryLabel }}
           </button>
           <button v-else class="btn btn-ghost grow btn-lg" @click="timer.pause()">Pauza</button>
           <button class="btn btn-ghost btn-lg" @click="completeExercise" title="Přeskočit zbytek sérií">›</button>

@@ -12,7 +12,8 @@ import { ref } from 'vue'
 import { pullSteps, syncWithServer } from './api'
 import { buildSnapshot, setSteps, state, today, todayStatus } from '@/stores/app'
 import { resubscribeOnLaunch, setBadge } from './sw-client'
-import { todayKey } from './date'
+import { todayKey, weekKeyOf } from './date'
+import { closeDueWeeks, reopenWeeksFrom } from './engine'
 
 export const syncing = ref(false)
 export const lastSyncError = ref<string | null>(null)
@@ -49,6 +50,7 @@ export async function syncNow(force = false): Promise<boolean> {
 
     // Kroky z Health se berou jako pravda – uživatel je nezapisoval ručně.
     const entries = await pullSteps(state.settings.server, 21)
+    let oldestChanged: string | null = null
     for (const entry of entries) {
       const local = state.days[entry.date]
       // Ruční zápis nepřepisujeme, pokud je vyšší (uživatel mohl dopsat
@@ -56,6 +58,18 @@ export async function syncNow(force = false): Promise<boolean> {
       if (local?.stepsSource === 'manual' && local.steps > entry.steps) continue
       if (local?.steps === entry.steps) continue
       setSteps(entry.date, entry.steps, 'shortcut')
+      if (!oldestChanged || entry.date < oldestChanged) oldestChanged = entry.date
+    }
+
+    // Kroky mohly dorazit za den, který spadá do už uzavřeného týdne – typicky
+    // když se appka týden neotevřela. Uzávěrku je pak potřeba přepočítat,
+    // jinak by v knize zůstal dluh z dat, která tehdy ještě nebyla k dispozici.
+    if (oldestChanged) {
+      const week = weekKeyOf(oldestChanged)
+      if (state.lastClosedWeek && week <= state.lastClosedWeek) {
+        reopenWeeksFrom(state, week)
+        closeDueWeeks(state, today.value)
+      }
     }
 
     state.settings.server.lastSyncAt = new Date().toISOString()

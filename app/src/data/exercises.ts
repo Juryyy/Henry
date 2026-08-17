@@ -118,7 +118,6 @@ export const EXERCISES: Exercise[] = [
     warning: 'Vynech při akutní bolesti krční páteře; pokud se objeví bolest vystřelující do nohy, cvičení ihned přeruš.',
     tags: [
       'brisni-lis',
-      'flexe-patere',
       'vleze',
       'bez-pomucek',
     ],

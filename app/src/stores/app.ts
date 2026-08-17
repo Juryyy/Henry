@@ -68,6 +68,9 @@ export function initStore(): void {
   setInterval(refreshClock, 60_000)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') refreshClock()
+    // Uložit i při odchodu do pozadí. iOS umí appku na pozadí zabít bez toho,
+    // aby stihla přijít událost `pagehide`, a rozdělaná změna by se ztratila.
+    else flushState(state)
   })
   window.addEventListener('pagehide', () => flushState(state))
 }

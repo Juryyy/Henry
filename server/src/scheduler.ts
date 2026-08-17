@@ -22,6 +22,7 @@ import {
   markDirty,
   markSent,
   persist,
+  wasDelivered,
   wasSent,
   type Database,
   type ScheduleConfig,
@@ -94,7 +95,10 @@ function isMuted(db: Database, slotId: string, today: string, snapshot: StateSna
   if (days.length < IGNORE_LIMIT) return false
 
   const ignored = days.every((day) => {
-    if (!wasSent(`${day.date}|${slotId}`)) return false
+    // Musí to být opravdu doručená připomínka. Kdyby stačil jakýkoli záznam,
+    // ztlumení by se samo obnovovalo donekonečna: dny, kdy jsme mlčeli,
+    // by se počítaly jako další ignorované.
+    if (!wasDelivered(`${day.date}|${slotId}`)) return false
     if (blockIndex) return !day.slots.includes(Number(blockIndex[1]))
     if (slotId === 'steps' || slotId === 'steps-last') return day.steps < day.target * 0.6
     return false
@@ -112,7 +116,7 @@ function isMuted(db: Database, slotId: string, today: string, snapshot: StateSna
 function lastCallsThisWeek(today: string): number {
   let count = 0
   for (let i = 0; i < 7; i++) {
-    if (wasSent(`${addDays(today, -i)}|steps-last`)) count++
+    if (wasDelivered(`${addDays(today, -i)}|steps-last`)) count++
   }
   return count
 }
@@ -158,8 +162,11 @@ function buildSlots(
       priority: 1,
       build: () => {
         if (!snapshot) return null
-        const threshold = (snapshot.stepsNeededToday * schedule.stepCheckThreshold) / 100
-        if (snapshot.steps >= threshold) return null
+        // `stepsNeededToday` je zbytek na dnešek, denní porce je tedy
+        // nachozeno + zbytek. Práh se počítá z porce, ne ze zbytku.
+        const portion = snapshot.steps + snapshot.stepsNeededToday
+        if (portion <= 0) return null
+        if (snapshot.steps >= (portion * schedule.stepCheckThreshold) / 100) return null
         return { ...stepCheckMessage(snapshot, schedule.tone, `${seed}steps`), url: '#/kroky', tag: 'steps' }
       },
     })
@@ -173,7 +180,8 @@ function buildSlots(
     priority: 6,
     build: () => {
       if (!snapshot) return null
-      if (snapshot.steps >= snapshot.stepsNeededToday * 0.85) return null
+      const portion = snapshot.steps + snapshot.stepsNeededToday
+      if (portion <= 0 || snapshot.steps >= portion * 0.85) return null
       if (lastCallsThisWeek(today) >= 3) return null
       return { ...lastCallMessage(snapshot, `${seed}last`), url: '#/kroky', tag: 'steps' }
     },
@@ -234,16 +242,29 @@ function buildSlots(
   return slots
 }
 
-/** Kolik notifikací se zvukem už dnes odešlo. */
-function sentTodayCount(slots: Slot[], today: string): number {
-  return slots.filter((slot) => !slot.silent && wasSent(`${today}|${slot.id}`)).length
+/** Kolik notifikací se zvukem už dnes doopravdy odešlo. */
+function deliveredTodayCount(slots: Slot[], today: string): number {
+  return slots.filter((slot) => !slot.silent && wasDelivered(`${today}|${slot.id}`)).length
 }
 
 /* ------------------------------------------------------------------ */
 /*  Tik                                                                */
 /* ------------------------------------------------------------------ */
 
+/** Běží právě tik? Pomalé odeslání push nesmí pustit dovnitř druhý. */
+let ticking = false
+
 export async function tick(now: Date = new Date()): Promise<void> {
+  if (ticking) return
+  ticking = true
+  try {
+    await runTick(now)
+  } finally {
+    ticking = false
+  }
+}
+
+async function runTick(now: Date): Promise<void> {
   const db = getDb()
   const schedule = db.schedule
   if (!schedule.enabled || db.subscriptions.length === 0) return
@@ -262,13 +283,13 @@ export async function tick(now: Date = new Date()): Promise<void> {
     })
     .sort((a, b) => a.priority - b.priority)
 
-  let budgetLeft = DAILY_BUDGET - sentTodayCount(slots, zoned.date)
+  let budgetLeft = DAILY_BUDGET - deliveredTodayCount(slots, zoned.date)
 
   for (const slot of due) {
     const key = `${zoned.date}|${slot.id}`
 
     if (isMuted(db, slot.id, zoned.date, snapshot)) {
-      markSent(key)
+      markSent(key, false)
       continue
     }
 
@@ -276,15 +297,19 @@ export async function tick(now: Date = new Date()): Promise<void> {
     if (!message) {
       // Podmínka nesplněna (blok hotový, kroky nachozené) – označíme jako
       // vyřízené, ať se to za minutu nezkouší znovu.
-      markSent(key)
+      markSent(key, false)
       continue
     }
 
     if (!slot.silent && budgetLeft <= 0) {
-      markSent(key)
+      markSent(key, false)
       addLog('schedule', `${slot.id}: zahozeno, denní rozpočet vyčerpán`)
       continue
     }
+
+    // Označit PŘED odesláním. Kdyby push trval dlouho a mezitím se stihl
+    // spustit další tik, poslal by tutéž notifikaci znovu.
+    markSent(key, true)
 
     const result = await sendToAll({
       title: message.title,
@@ -295,7 +320,6 @@ export async function tick(now: Date = new Date()): Promise<void> {
       silent: slot.silent,
       data: { slot: slot.id, date: zoned.date },
     })
-    markSent(key)
     if (!slot.silent) budgetLeft--
     addLog('schedule', `${slot.id}: odesláno ${result.sent}, smazáno ${result.removed}, chyb ${result.failed}`)
   }

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   carryInto,
   closeDueWeeks,
+  reopenWeeksFrom,
+  weekHasData,
   currentStreak,
   dailyStepTarget,
   dayStatus,
@@ -382,5 +384,100 @@ describe('odolnost proti nesmyslům', () => {
     const summary = summarizeWeek(s, MON, MON)
     expect(summary.steps.progressPct).toBe(100)
     expect(Number.isFinite(summary.steps.perRemainingDay)).toBe(true)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/*  Regrese z revize                                                   */
+/* ------------------------------------------------------------------ */
+
+describe('regrese', () => {
+  it('rozdělaný blok nedělá z týdne „týden s daty“', () => {
+    const s = makeState()
+    // Přesně to, co vznikne otevřením obrazovky bloku a jejím zavřením.
+    s.days[MON] = {
+      date: MON,
+      steps: 0,
+      stepsSource: 'manual',
+      blocks: [{ slot: 0, planId: 'p', doneExerciseIds: [], skippedExerciseIds: [] }],
+    }
+    expect(weekHasData(s, MON)).toBe(false)
+
+    closeDueWeeks(s, NEXT_MON)
+    expect(s.ledger.find((e) => e.week === MON && e.kind === 'steps')!.skipped).toBe(true)
+    expect(requiredFor(s, NEXT_MON, 'steps')).toBe(35_000)
+  })
+
+  it('dokončený blok už týden za „použitý“ považuje', () => {
+    const s = makeState()
+    doBlocks(s, MON, 1)
+    expect(weekHasData(s, MON)).toBe(true)
+  })
+
+  it('nečíselné rozložení nerozbije denní cíl', () => {
+    const s = makeState((x) => {
+      // Prázdné pole ve formuláři vrací přes `v-model.number` prázdný řetězec.
+      x.settings.steps.distribution = ['' as unknown as number, 13, 13, 13, 14, 17, 17]
+    })
+    const target = dailyStepTarget(s, MON)
+    expect(Number.isFinite(target)).toBe(true)
+    expect(target).toBe(0) // pondělí má podíl 0
+    expect(dailyStepTarget(s, '2025-08-09')).toBeGreaterThan(0)
+  })
+
+  it('samé nuly v rozložení spadnou zpátky na rovnoměrné dělení', () => {
+    const s = makeState((x) => {
+      x.settings.steps.distribution = [0, 0, 0, 0, 0, 0, 0]
+    })
+    expect(dailyStepTarget(s, MON)).toBe(5_000)
+  })
+
+  it('týden bez dat protáhne dál i kredit, nejen dluh', () => {
+    const s = makeState()
+    setSteps(s, MON, 45_000) // přebytek → kredit 5 000
+    closeDueWeeks(s, NEXT_MON)
+    expect(carryInto(s, NEXT_MON, 'steps').credit).toBe(5_000)
+
+    // Další týden se appka vůbec nepoužila.
+    closeDueWeeks(s, addDays(MON, 14))
+    expect(carryInto(s, addDays(MON, 14), 'steps').credit).toBe(5_000)
+    expect(requiredFor(s, addDays(MON, 14), 'steps')).toBe(30_000)
+  })
+
+  it('reopenWeeksFrom zahodí uzávěrky od daného týdne dál', () => {
+    const s = makeState()
+    setSteps(s, MON, 1_000)
+    setSteps(s, addDays(MON, 7), 1_000)
+    closeDueWeeks(s, addDays(MON, 14))
+    expect(s.ledger.length).toBe(4)
+
+    reopenWeeksFrom(s, addDays(MON, 7))
+    expect(s.ledger.every((e) => e.week === MON)).toBe(true)
+    expect(s.lastClosedWeek).toBe(MON)
+  })
+
+  it('dopočtené kroky z minulého týdne dluh zase smažou', () => {
+    const s = makeState()
+    // Appka se týden neotevřela, uzávěrka proběhla skoro s nulou.
+    setSteps(s, MON, 100)
+    closeDueWeeks(s, NEXT_MON)
+    expect(carryInto(s, NEXT_MON, 'steps').debt).toBe(10_000)
+
+    // Teprve teď dorazí kroky ze serveru.
+    for (let i = 0; i < 7; i++) setSteps(s, addDays(MON, i), 5_500)
+    reopenWeeksFrom(s, MON)
+    closeDueWeeks(s, NEXT_MON)
+
+    expect(carryInto(s, NEXT_MON, 'steps').debt).toBe(0)
+  })
+
+  it('reopenWeeksFrom u týdne, který v knize není, nic nerozbije', () => {
+    const s = makeState()
+    setSteps(s, MON, 1_000)
+    closeDueWeeks(s, NEXT_MON)
+    const before = s.lastClosedWeek
+    reopenWeeksFrom(s, addDays(MON, 70))
+    expect(s.lastClosedWeek).toBe(before)
+    expect(s.ledger.length).toBe(2)
   })
 })

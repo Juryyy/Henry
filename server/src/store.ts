@@ -75,8 +75,13 @@ export interface Database {
   snapshot: StateSnapshot | null
   schedule: ScheduleConfig
   steps: Record<string, StepEntry>
-  /** Klíč `${date}|${slotId}` -> ISO timestamp odeslání. Brání duplicitám. */
-  sent: Record<string, string>
+  /**
+   * Klíč `${date}|${slotId}` -> stav slotu za daný den. Brání duplicitám.
+   * `skip` znamená „vyřízeno, ale nic se neposlalo“ (podmínka nesplněna nebo
+   * ztlumeno) – takové sloty nesmí ujídat z denního rozpočtu ani se počítat
+   * jako ignorovaná připomínka.
+   */
+  sent: Record<string, 'sent' | 'skip' | string>
   /** Ztlumené sloty: id slotu -> datum, do kterého se nemá posílat. */
   muted: Record<string, string>
   log: { at: string; kind: string; detail: string }[]
@@ -122,7 +127,16 @@ export function loadDb(): Database {
       db = { ...emptyDb(), ...parsed, schedule: { ...DEFAULT_SCHEDULE, ...parsed.schedule } }
     }
   } catch (err) {
-    console.error('[henry] databázi se nepodařilo načíst, začínám na čisto:', err)
+    // Poškozený soubor odsuneme stranou místo toho, abychom ho za pár vteřin
+    // přepsali prázdnou databází. Data z něj jdou aspoň zachránit ručně.
+    const backup = `${config.dataFile}.corrupt-${Date.now()}`
+    try {
+      renameSync(config.dataFile, backup)
+      console.error(`[henry] databáze je poškozená, odložil jsem ji do ${backup}`)
+    } catch {
+      console.error('[henry] databáze je poškozená a nejde ani přejmenovat')
+    }
+    console.error('[henry] začínám na čisto:', err)
     db = emptyDb()
   }
   return db
@@ -209,12 +223,18 @@ export function recentSteps(days: number): StepEntry[] {
     .slice(0, days)
 }
 
+/** Byl slot ten den vyřízený (ať už odesláním, nebo přeskočením)? */
 export function wasSent(key: string): boolean {
   return !!db.sent[key]
 }
 
-export function markSent(key: string): void {
-  db.sent[key] = new Date().toISOString()
+/** Odešla ten den notifikace doopravdy? */
+export function wasDelivered(key: string): boolean {
+  return db.sent[key] === 'sent'
+}
+
+export function markSent(key: string, delivered: boolean): void {
+  db.sent[key] = delivered ? 'sent' : 'skip'
   // Úklid: držíme jen posledních ~400 záznamů, ať soubor neroste donekonečna.
   const keys = Object.keys(db.sent)
   if (keys.length > 400) {

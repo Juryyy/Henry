@@ -37,6 +37,13 @@ export async function registerServiceWorker(): Promise<void> {
     })
     swRegistration.value = registration
 
+    // Aktualizace mohla dojet, zatímco byla appka zavřená – pak už událost
+    // `updatefound` nepřijde a bez téhle kontroly by uživatel zůstal navždy
+    // na staré verzi.
+    if (registration.waiting && navigator.serviceWorker.controller) {
+      updateAvailable.value = true
+    }
+
     registration.addEventListener('updatefound', () => {
       const installing = registration.installing
       if (!installing) return

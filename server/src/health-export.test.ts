@@ -23,6 +23,16 @@ describe('kroky ze Zkratek', () => {
 
   it('zaokrouhluje desetinná čísla', () => {
     expect(coerceSteps(8423.6)).toBe(8424)
+    // Desetinná tečka nesmí skončit jako další řád – '8423.6' není 84 236.
+    expect(coerceSteps('8423.6')).toBe(8424)
+    expect(coerceSteps('8423,6')).toBe(8424)
+    expect(coerceSteps('8 423,5')).toBe(8424)
+  })
+
+  it('tři číslice za oddělovačem bere jako tisíce, ne jako desetiny', () => {
+    expect(coerceSteps('8,423')).toBe(8423)
+    expect(coerceSteps('8.423')).toBe(8423)
+    expect(coerceSteps('12,345')).toBe(12345)
   })
 
   it('hlídá formát data', () => {

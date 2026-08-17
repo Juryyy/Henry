@@ -1,0 +1,543 @@
+/**
+ * Jádro logiky: dluh za kroky a za bloky cvičení, uzavírání týdnů,
+ * série (streak) a skóre dne.
+ *
+ * Všechno tady jsou čisté funkce nad `AppState` – nic nemutuje globální stav,
+ * takže se to dá testovat bez prohlížeče (viz engine.test.ts).
+ *
+ * ── Jak funguje dluh ──────────────────────────────────────────────────
+ * Týden je jeden „hrnec“. Do hrnce se nasype týdenní cíl + dluh z minulého
+ * týdne − kredit z minulého týdne. Cokoli za týden nachodíš, se z hrnce
+ * odečítá. V neděli o půlnoci se hrnec uzavře:
+ *
+ *   zbytek > 0  →  dluh do dalšího týdne (ZASTROPOVANÝ)
+ *   zbytek < 0  →  kredit do dalšího týdne (taky zastropovaný)
+ *
+ * Strop je tam schválně. Bez něj se z aplikace po dvou zkažených týdnech
+ * stane nesplatitelná hypotéka a člověk to zahodí. Se stropem je nejhorší
+ * možný scénář „příští týden dva dny navíc“, což se dohnat dá.
+ */
+
+import {
+  addWeeks,
+  daysBetween,
+  elapsedDaysInWeek,
+  todayKey,
+  weekDays,
+  weekKeyOf,
+  weekdayIndex,
+  type DateKey,
+  type WeekKey,
+} from './date'
+import type {
+  AppState,
+  DayLog,
+  LedgerEntry,
+  LedgerKind,
+  Measurement,
+  WeeklyTask,
+  WeeklyTaskLog,
+} from './types'
+
+/* ------------------------------------------------------------------ */
+/*  Cíle                                                               */
+/* ------------------------------------------------------------------ */
+
+/** Průměrný denní cíl kroků (týdenní cíl / 7). */
+export function averageDailyStepTarget(state: AppState): number {
+  return Math.round(state.settings.steps.weeklyTarget / 7)
+}
+
+/** Cíl kroků pro konkrétní den podle rozložení Po–Ne. */
+export function dailyStepTarget(state: AppState, date: DateKey): number {
+  const dist = state.settings.steps.distribution
+  const sum = dist.reduce((a, b) => a + b, 0) || 100
+  const share = dist[weekdayIndex(date)] ?? 100 / 7
+  return Math.round((state.settings.steps.weeklyTarget * share) / sum)
+}
+
+/** Kolik bloků cvičení se za týden reálně vyžaduje (dny milosti se odečítají). */
+export function weeklyBlockTarget(state: AppState): number {
+  const { blocksPerDay, graceDaysPerWeek } = state.settings.exercise
+  const days = Math.max(1, 7 - Math.max(0, Math.min(6, graceDaysPerWeek)))
+  return blocksPerDay * days
+}
+
+/**
+ * Strop dluhu podle druhu.
+ *
+ * Proč zrovna 2 dny: dluh 2 denních dávek znamená, že příští týden ujdeš
+ * devět denních dávek za sedm dní, tedy 1,29× svého běžného objemu. Přesně
+ * to je horní hranice bezpečného pásma poměru akutní/chronické zátěže
+ * (0,8–1,3), nad kterým v datech začíná růst riziko přetížení. Bez stropu by
+ * se z týdenního výpadku stal 20tisícový nedělní pochod – metabolicky v pohodě,
+ * pro nezvyklé šlachy ne.
+ */
+export function debtCap(state: AppState, kind: LedgerKind): number {
+  if (kind === 'steps') return Math.round(averageDailyStepTarget(state) * state.settings.steps.debtCapDays)
+  return state.settings.exercise.debtCapBlocks
+}
+
+/** Strop kreditu podle druhu. */
+export function creditCap(state: AppState, kind: LedgerKind): number {
+  if (kind === 'steps') {
+    return state.settings.steps.carrySurplus
+      ? Math.round(averageDailyStepTarget(state) * state.settings.steps.creditCapDays)
+      : 0
+  }
+  // Přebytečné bloky se nepřenášejí – odcvičit 5 bloků v neděli není důvod
+  // vynechat pondělí, protahování má smysl jen když je pravidelné.
+  return 0
+}
+
+/* ------------------------------------------------------------------ */
+/*  Načítání dat z týdne                                               */
+/* ------------------------------------------------------------------ */
+
+export function getDay(state: AppState, date: DateKey): DayLog | undefined {
+  return state.days[date]
+}
+
+/** Počet dokončených bloků daného dne. */
+export function completedBlocks(day: DayLog | undefined): number {
+  if (!day) return 0
+  return day.blocks.filter((b) => !!b.completedAt).length
+}
+
+/** Součet kroků za týden. */
+export function weekSteps(state: AppState, week: WeekKey): number {
+  return weekDays(week).reduce((sum, d) => sum + (state.days[d]?.steps ?? 0), 0)
+}
+
+/** Součet dokončených bloků za týden. */
+export function weekBlocks(state: AppState, week: WeekKey): number {
+  return weekDays(week).reduce((sum, d) => sum + completedBlocks(state.days[d]), 0)
+}
+
+/** Má týden vůbec nějaká data? Týden bez dat se neuzavírá jako selhání. */
+export function weekHasData(state: AppState, week: WeekKey): boolean {
+  return weekDays(week).some((d) => {
+    const day = state.days[d]
+    if (!day) return false
+    return day.steps > 0 || day.blocks.length > 0 || !!day.note || !!day.restDay
+  })
+}
+
+/* ------------------------------------------------------------------ */
+/*  Dluhová kniha                                                      */
+/* ------------------------------------------------------------------ */
+
+function findEntry(state: AppState, week: WeekKey, kind: LedgerKind): LedgerEntry | undefined {
+  return state.ledger.find((e) => e.week === week && e.kind === kind)
+}
+
+/**
+ * Co vstupuje do daného týdne z minulosti. Vyhlášený bankrot v tomhle týdnu
+ * dluh vynuluje (kredit nechává být – ten si člověk poctivě nachodil).
+ */
+export function carryInto(state: AppState, week: WeekKey, kind: LedgerKind): { debt: number; credit: number } {
+  const prev = findEntry(state, addWeeks(week, -1), kind)
+  let debt = prev?.debt ?? 0
+  const credit = prev?.credit ?? 0
+  const wiped = state.bankruptcies.some(
+    (b) => weekKeyOf(b.date) === week && (b.kind === kind || b.kind === 'all'),
+  )
+  if (wiped) debt = 0
+  return { debt, credit }
+}
+
+/** Kolik se má daný týden splnit (základ + dluh − kredit, minimálně 0). */
+export function requiredFor(state: AppState, week: WeekKey, kind: LedgerKind): number {
+  const base = kind === 'steps' ? state.settings.steps.weeklyTarget : weeklyBlockTarget(state)
+  const { debt, credit } = carryInto(state, week, kind)
+  return Math.max(0, base + debt - credit)
+}
+
+/* ------------------------------------------------------------------ */
+/*  Přehled týdne                                                      */
+/* ------------------------------------------------------------------ */
+
+export type PaceStatus = 'ahead' | 'on-track' | 'behind' | 'critical' | 'done'
+
+export interface KindSummary {
+  kind: LedgerKind
+  /** Základní týdenní cíl bez dluhu. */
+  base: number
+  debtIn: number
+  creditIn: number
+  /** Kolik se má tenhle týden splnit celkem. */
+  required: number
+  achieved: number
+  remaining: number
+  /** Kolik zbývá na den, když to rozpočítám na zbývající dny včetně dneška. */
+  perRemainingDay: number
+  /** Kolik by mělo být hotovo, kdyby šel člověk rovnoměrně. */
+  expectedByNow: number
+  progressPct: number
+  pace: PaceStatus
+}
+
+export interface WeekSummary {
+  week: WeekKey
+  isCurrent: boolean
+  daysElapsed: number
+  /** Zbývající dny včetně dneška (v minulém týdnu 0). */
+  daysRemaining: number
+  steps: KindSummary
+  blocks: KindSummary
+  tasks: TaskSummary[]
+}
+
+export interface TaskSummary {
+  task: WeeklyTask
+  target: number
+  carried: number
+  done: number
+  remaining: number
+  dates: DateKey[]
+}
+
+function paceOf(achieved: number, required: number, expected: number, daysRemaining: number): PaceStatus {
+  if (required <= 0 || achieved >= required) return 'done'
+  if (achieved >= expected) return achieved > expected * 1.15 ? 'ahead' : 'on-track'
+  const shortfall = expected - achieved
+  if (daysRemaining <= 1 || shortfall > required * 0.25) return 'critical'
+  return 'behind'
+}
+
+/**
+ * Kolik dní týdne „už proběhlo“ pro účel očekávaného tempa.
+ *
+ * Celé dny + rozdělaná část dneška. Bez toho by appka v pondělí v sedm ráno
+ * hlásila, že jsi pozadu, protože ještě nemáš nachozeno – a začínat den
+ * červeným číslem je ta nejhorší možná motivace.
+ */
+function elapsedFraction(daysElapsed: number, isCurrent: boolean, minutesNow: number): number {
+  if (!isCurrent) return Math.min(7, daysElapsed)
+  const DAY_START = 7 * 60
+  const DAY_END = 22 * 60
+  const progress = Math.max(0, Math.min(1, (minutesNow - DAY_START) / (DAY_END - DAY_START)))
+  return Math.max(0, daysElapsed - 1) + progress
+}
+
+function summarizeKind(
+  state: AppState,
+  week: WeekKey,
+  kind: LedgerKind,
+  achieved: number,
+  elapsed: number,
+  daysRemaining: number,
+): KindSummary {
+  const base = kind === 'steps' ? state.settings.steps.weeklyTarget : weeklyBlockTarget(state)
+  const { debt, credit } = carryInto(state, week, kind)
+  const required = Math.max(0, base + debt - credit)
+  const remaining = Math.max(0, required - achieved)
+  const perRemainingDay = daysRemaining > 0 ? Math.ceil(remaining / daysRemaining) : remaining
+  const expectedByNow = Math.round((required * Math.min(7, elapsed)) / 7)
+  return {
+    kind,
+    base,
+    debtIn: debt,
+    creditIn: credit,
+    required,
+    achieved,
+    remaining,
+    perRemainingDay,
+    expectedByNow,
+    progressPct: required > 0 ? Math.min(100, Math.round((achieved / required) * 100)) : 100,
+    pace: paceOf(achieved, required, expectedByNow, daysRemaining),
+  }
+}
+
+export function summarizeWeek(
+  state: AppState,
+  week: WeekKey,
+  today: DateKey = todayKey(),
+  minutesNow: number = new Date().getHours() * 60 + new Date().getMinutes(),
+): WeekSummary {
+  const currentWeek = weekKeyOf(today)
+  const isCurrent = week === currentWeek
+  const isPast = daysBetween(week, currentWeek) > 0
+
+  const daysElapsed = isPast ? 7 : elapsedDaysInWeek(week, today)
+  const daysRemaining = isCurrent ? 7 - weekdayIndex(today) : 0
+  const elapsed = elapsedFraction(daysElapsed, isCurrent, minutesNow)
+
+  return {
+    week,
+    isCurrent,
+    daysElapsed,
+    daysRemaining,
+    steps: summarizeKind(state, week, 'steps', weekSteps(state, week), elapsed, daysRemaining),
+    blocks: summarizeKind(state, week, 'blocks', weekBlocks(state, week), elapsed, daysRemaining),
+    tasks: summarizeTasks(state, week),
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Týdenní úkoly                                                      */
+/* ------------------------------------------------------------------ */
+
+export function taskLogKey(week: WeekKey, taskId: string): string {
+  return `${week}|${taskId}`
+}
+
+export function getTaskLog(state: AppState, week: WeekKey, taskId: string): WeeklyTaskLog {
+  return (
+    state.weeklyTaskLogs[taskLogKey(week, taskId)] ?? { week, taskId, dates: [], carried: 0 }
+  )
+}
+
+/**
+ * Dluh u týdenních úkolů. Přenáší se jen u úkolů s `rollover` a maximálně
+ * jeden kus – „třikrát do posilovny příští týden“ nikdo neudělá.
+ */
+export function carriedTaskCount(state: AppState, week: WeekKey, task: WeeklyTask): number {
+  if (!task.rollover) return 0
+  const prevWeek = addWeeks(week, -1)
+  // Před začátkem sledování se nic nepřenáší – jinak by první týden startoval
+  // s dluhem z doby, kdy appka ještě neexistovala.
+  if (daysBetween(weekKeyOf(state.settings.startDate), prevWeek) < 0) return 0
+
+  // Chybějící záznam znamená „minulý týden se s tím vůbec nehnulo“,
+  // což je ten nejběžnější způsob, jak úkol nesplnit.
+  const prev = state.weeklyTaskLogs[taskLogKey(prevWeek, task.id)] ?? { dates: [], carried: 0 }
+  const prevRequired = task.target + prev.carried
+  const missed = prevRequired - prev.dates.length
+  return Math.max(0, Math.min(1, missed))
+}
+
+export function summarizeTasks(state: AppState, week: WeekKey): TaskSummary[] {
+  return state.weeklyTasks
+    .filter((t) => t.active)
+    .map((task) => {
+      const log = getTaskLog(state, week, task.id)
+      const carried = log.carried || carriedTaskCount(state, week, task)
+      const target = task.target + carried
+      const done = log.dates.length
+      return { task, target, carried, done, remaining: Math.max(0, target - done), dates: log.dates }
+    })
+}
+
+/* ------------------------------------------------------------------ */
+/*  Uzavírání týdnů                                                    */
+/* ------------------------------------------------------------------ */
+
+function closeKind(
+  state: AppState,
+  week: WeekKey,
+  kind: LedgerKind,
+  now: string,
+): LedgerEntry {
+  const achieved = kind === 'steps' ? weekSteps(state, week) : weekBlocks(state, week)
+  const required = requiredFor(state, week, kind)
+  const { debt: debtIn } = carryInto(state, week, kind)
+  const leftover = required - achieved
+
+  // Týden bez jediného záznamu = uživatel appku nepoužíval (dovolená, nemoc).
+  // Nedostatek dat není důkaz nečinnosti, takže z toho nový dluh neděláme –
+  // jen protáhneme dál to, co už dlužil.
+  if (!weekHasData(state, week)) {
+    return {
+      week, kind, required, achieved,
+      debt: Math.min(debtIn, debtCap(state, kind)),
+      rawDebt: debtIn, credit: 0, forgiven: 0, closedAt: now, skipped: true,
+    }
+  }
+
+  if (leftover > 0) {
+    const cap = debtCap(state, kind)
+    const debt = Math.min(leftover, cap)
+    return {
+      week, kind, required, achieved,
+      debt, rawDebt: leftover, credit: 0, forgiven: leftover - debt, closedAt: now,
+    }
+  }
+
+  const credit = Math.min(-leftover, creditCap(state, kind))
+  return {
+    week, kind, required, achieved,
+    debt: 0, rawDebt: 0, credit, forgiven: 0, closedAt: now,
+  }
+}
+
+/**
+ * Uzavře všechny týdny, které už skončily a ještě nejsou v knize.
+ * Vrací nové (mutovaný stav se nevrací – funkce zapisuje přímo do `state`,
+ * protože se volá nad reaktivním storem).
+ */
+export function closeDueWeeks(state: AppState, today: DateKey = todayKey()): LedgerEntry[] {
+  const currentWeek = weekKeyOf(today)
+  const firstWeek = weekKeyOf(state.settings.startDate)
+  const added: LedgerEntry[] = []
+  const now = new Date().toISOString()
+
+  // Ochrana proti nesmyslně staré startDate (např. po importu cizích dat).
+  const maxWeeksBack = 260
+  let week = state.lastClosedWeek ? addWeeks(state.lastClosedWeek, 1) : firstWeek
+  if (daysBetween(week, currentWeek) / 7 > maxWeeksBack) {
+    week = addWeeks(currentWeek, -maxWeeksBack)
+  }
+
+  while (daysBetween(week, currentWeek) > 0) {
+    for (const kind of ['steps', 'blocks'] as LedgerKind[]) {
+      if (!findEntry(state, week, kind)) {
+        const entry = closeKind(state, week, kind, now)
+        if (kind === 'steps') applyRamp(state, entry)
+        state.ledger.push(entry)
+        added.push(entry)
+      }
+    }
+    // Přenos nesplněných týdenních úkolů do dalšího týdne.
+    rolloverTasks(state, week)
+    state.lastClosedWeek = week
+    week = addWeeks(week, 1)
+  }
+  return added
+}
+
+/**
+ * Zvýšení laťky po splněném týdnu. Laťka roste jen tehdy, když týden vyšel –
+ * zvyšovat cíl někomu, kdo ho zrovna nesplnil, je nejjistější způsob, jak ho
+ * odradit. Krok +500 kroků/den odpovídá doporučenému nárůstu 10–20 % týdně.
+ */
+function applyRamp(state: AppState, entry: LedgerEntry): void {
+  const s = state.settings.steps
+  if (!s.rampEnabled || entry.skipped) return
+  if (entry.achieved < entry.required) return
+  if (s.weeklyTarget >= s.goalWeeklyTarget) return
+  const next = Math.min(s.goalWeeklyTarget, s.weeklyTarget + s.rampStep)
+  if (next === s.weeklyTarget) return
+  s.weeklyTarget = next
+  entry.raisedTargetTo = next
+}
+
+function rolloverTasks(state: AppState, week: WeekKey): void {
+  const next = addWeeks(week, 1)
+  for (const task of state.weeklyTasks) {
+    if (!task.active || !task.rollover) continue
+    const carried = carriedTaskCount(state, next, task)
+    if (carried <= 0) continue
+    const key = taskLogKey(next, task.id)
+    const existing = state.weeklyTaskLogs[key]
+    state.weeklyTaskLogs[key] = existing
+      ? { ...existing, carried }
+      : { week: next, taskId: task.id, dates: [], carried }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Skóre dne a série                                                  */
+/* ------------------------------------------------------------------ */
+
+export interface DayStatus {
+  date: DateKey
+  steps: number
+  stepTarget: number
+  stepPct: number
+  blocksDone: number
+  blocksTarget: number
+  /** 0–100, kroky a bloky půl na půl. */
+  score: number
+  /** Den se počítá do série. */
+  counts: boolean
+  restDay: boolean
+  isFuture: boolean
+}
+
+/** Práh skóre, od kterého se den počítá jako splněný. */
+export const DAY_SCORE_THRESHOLD = 60
+
+export function dayStatus(state: AppState, date: DateKey, today: DateKey = todayKey()): DayStatus {
+  const day = state.days[date]
+  const stepTarget = dailyStepTarget(state, date)
+  const blocksTarget = state.settings.exercise.blocksPerDay
+  const steps = day?.steps ?? 0
+  const blocksDone = completedBlocks(day)
+  const stepPct = stepTarget > 0 ? Math.min(100, (steps / stepTarget) * 100) : 100
+  const blockPct = blocksTarget > 0 ? Math.min(100, (blocksDone / blocksTarget) * 100) : 100
+  const score = Math.round(stepPct * 0.5 + blockPct * 0.5)
+  const restDay = !!day?.restDay
+  return {
+    date,
+    steps,
+    stepTarget,
+    stepPct: Math.round(stepPct),
+    blocksDone,
+    blocksTarget,
+    score,
+    counts: restDay || score >= DAY_SCORE_THRESHOLD,
+    restDay,
+    isFuture: daysBetween(today, date) > 0,
+  }
+}
+
+/**
+ * Série splněných dní. Dnešek se do série započítá jen když už je splněný –
+ * rozdělaný den ji ale nepřeruší (jinak by ráno každému spadla na nulu).
+ */
+export function currentStreak(state: AppState, today: DateKey = todayKey()): number {
+  let streak = 0
+  let cursor = today
+  const first = state.settings.startDate
+
+  if (dayStatus(state, today, today).counts) streak = 1
+  cursor = shiftBack(cursor)
+
+  while (daysBetween(first, cursor) >= 0) {
+    if (!dayStatus(state, cursor, today).counts) break
+    streak++
+    cursor = shiftBack(cursor)
+  }
+  return streak
+}
+
+function shiftBack(date: DateKey): DateKey {
+  const [y, m, d] = date.split('-').map(Number)
+  const dt = new Date(y, m - 1, d, 12)
+  dt.setDate(dt.getDate() - 1)
+  const yy = dt.getFullYear()
+  const mm = String(dt.getMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}
+
+/** Nejdelší série v historii. */
+export function longestStreak(state: AppState, today: DateKey = todayKey()): number {
+  const dates = Object.keys(state.days).sort()
+  if (dates.length === 0) return 0
+  let best = 0
+  let run = 0
+  let prev: DateKey | undefined
+  for (const date of dates) {
+    if (daysBetween(today, date) > 0) continue
+    const ok = dayStatus(state, date, today).counts
+    if (ok) {
+      run = prev && daysBetween(prev, date) === 1 ? run + 1 : 1
+      best = Math.max(best, run)
+    } else {
+      run = 0
+    }
+    prev = date
+  }
+  return best
+}
+
+/* ------------------------------------------------------------------ */
+/*  Míry                                                               */
+/* ------------------------------------------------------------------ */
+
+export function latestMeasurement(state: AppState): Measurement | undefined {
+  return [...state.measurements].sort((a, b) => a.date.localeCompare(b.date)).at(-1)
+}
+
+/** Vývoj jedné veličiny v čase, seřazeno vzestupně. */
+export function measurementSeries(
+  state: AppState,
+  field: 'weightKg' | 'waistCm' | 'toeTouchCm' | 'plankSec',
+): { date: DateKey; value: number }[] {
+  return state.measurements
+    .filter((m) => typeof m[field] === 'number')
+    .map((m) => ({ date: m.date, value: m[field] as number }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+}

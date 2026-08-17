@@ -1,0 +1,396 @@
+/* ==================================================================
+   Henry – designové tokeny a základní styly
+   Mobile first, tmavé téma jako výchozí (appka se používá ráno a večer).
+   ================================================================== */
+
+:root {
+  color-scheme: dark light;
+
+  --bg: #0f1115;
+  --bg-elevated: #171a21;
+  --surface: #1a1e26;
+  --surface-2: #222731;
+  --surface-3: #2b313d;
+  --border: #2a3039;
+  --border-strong: #3a424f;
+
+  --text: #e9ecf1;
+  --text-dim: #a5adbb;
+  --text-faint: #6f7887;
+
+  --accent: #4ade80;
+  --accent-dim: #22a45d;
+  --accent-soft: rgba(74, 222, 128, 0.14);
+
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.14);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --info: #60a5fa;
+  --info-soft: rgba(96, 165, 250, 0.14);
+  --violet: #a78bfa;
+  --violet-soft: rgba(167, 139, 250, 0.14);
+
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 22px;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
+
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, 'Helvetica Neue', Arial, sans-serif;
+
+  --tabbar-height: 58px;
+  --page-max: 580px;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --bg: #f4f6f9;
+    --bg-elevated: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #eef1f6;
+    --surface-3: #e2e7ef;
+    --border: #dfe4ec;
+    --border-strong: #c6cedb;
+
+    --text: #12161d;
+    --text-dim: #545d6c;
+    --text-faint: #7d8698;
+
+    --accent: #16a34a;
+    --accent-dim: #15803d;
+    --accent-soft: rgba(22, 163, 74, 0.12);
+
+    --warn: #b45309;
+    --warn-soft: rgba(180, 83, 9, 0.12);
+    --danger: #dc2626;
+    --danger-soft: rgba(220, 38, 38, 0.1);
+    --info: #2563eb;
+    --info-soft: rgba(37, 99, 235, 0.1);
+    --violet: #7c3aed;
+    --violet-soft: rgba(124, 58, 237, 0.1);
+
+    --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.06);
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/*  Reset                                                            */
+/* ---------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  /* Bez tohohle iOS v standalone režimu „gumuje“ celou stránku. */
+  overscroll-behavior-y: none;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+h1 { font-size: 1.6rem; }
+h2 { font-size: 1.15rem; }
+h3 { font-size: 1rem; }
+
+p { margin: 0 0 0.75em; }
+p:last-child { margin-bottom: 0; }
+
+a { color: var(--accent); }
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+ul, ol { margin: 0; padding-left: 1.25em; }
+
+/* ---------------------------------------------------------------- */
+/*  Layout                                                           */
+/* ---------------------------------------------------------------- */
+
+#app {
+  min-height: 100%;
+}
+
+.app-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: calc(var(--safe-top) + 14px) 16px calc(var(--tabbar-height) + var(--safe-bottom) + 24px);
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.page-header .eyebrow {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.stack-sm { display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.wrap { flex-wrap: wrap; }
+.grow { flex: 1; }
+
+/* ---------------------------------------------------------------- */
+/*  Karty                                                            */
+/* ---------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.card-tight { padding: 12px 14px; }
+
+.card-title {
+  font-size: 0.8rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+
+/* ---------------------------------------------------------------- */
+/*  Text                                                             */
+/* ---------------------------------------------------------------- */
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.big-number {
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.muted { color: var(--text-dim); }
+.faint { color: var(--text-faint); }
+.small { font-size: 0.85rem; }
+.tiny { font-size: 0.76rem; }
+.strong { font-weight: 650; }
+.center { text-align: center; }
+
+.c-accent { color: var(--accent); }
+.c-warn { color: var(--warn); }
+.c-danger { color: var(--danger); }
+.c-info { color: var(--info); }
+
+/* ---------------------------------------------------------------- */
+/*  Tlačítka                                                         */
+/* ---------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease, opacity 0.15s ease;
+  user-select: none;
+}
+
+.btn:active { transform: scale(0.975); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn:disabled:active { transform: none; }
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06120b;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+
+.btn-danger {
+  background: var(--danger-soft);
+  border-color: transparent;
+  color: var(--danger);
+}
+
+.btn-block { width: 100%; }
+.btn-sm { min-height: 36px; padding: 0 12px; font-size: 0.85rem; border-radius: 10px; }
+.btn-lg { min-height: 56px; font-size: 1.05rem; border-radius: 14px; }
+
+/* ---------------------------------------------------------------- */
+/*  Formuláře                                                        */
+/* ---------------------------------------------------------------- */
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+
+.field label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.field .hint {
+  font-size: 0.76rem;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+
+input[type='text'],
+input[type='number'],
+input[type='time'],
+input[type='date'],
+input[type='password'],
+input[type='url'],
+select,
+textarea {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  outline: none;
+  /* 16px zabrání tomu, aby iOS při fokusu zazoomoval stránku. */
+  font-size: 16px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+textarea { min-height: 80px; resize: vertical; }
+
+input[type='range'] { accent-color: var(--accent); width: 100%; }
+
+/* Šipky u number inputu na mobilu jen překáží. */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] { -moz-appearance: textfield; }
+
+/* ---------------------------------------------------------------- */
+/*  Odznaky a štítky                                                 */
+/* ---------------------------------------------------------------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 650;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.badge-accent { background: var(--accent-soft); color: var(--accent); }
+.badge-warn { background: var(--warn-soft); color: var(--warn); }
+.badge-danger { background: var(--danger-soft); color: var(--danger); }
+.badge-info { background: var(--info-soft); color: var(--info); }
+.badge-violet { background: var(--violet-soft); color: var(--violet); }
+
+/* ---------------------------------------------------------------- */
+/*  Přechody                                                         */
+/* ---------------------------------------------------------------- */
+
+.fade-enter-active,
+.fade-leave-active { transition: opacity 0.15s ease; }
+.fade-enter-from,
+.fade-leave-to { opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/*  Drobnosti                                                        */
+/* ---------------------------------------------------------------- */
+
+.divider {
+  height: 1px;
+  background: var(--border);
+  border: 0;
+  margin: 4px 0;
+}
+
+.list-reset { list-style: none; margin: 0; padding: 0; }
+
+.scroll-x {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.scroll-x::-webkit-scrollbar { display: none; }

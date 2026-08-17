@@ -90,16 +90,30 @@ function onWorkDone(): void {
 }
 
 /**
- * Hlavní tlačítko. Po pauze se musí odpočet *dopočítat*, ne spustit znovu –
- * jinak by pauza v poslední pětině série vrátila celou sérii na začátek.
+ * Hlavní tlačítko.
+ *
+ * Pauza mezi sériemi se řeší jako první, a to i u cviků na opakování – jinak
+ * by tlačítko „Hotovo“ uprostřed pauzy odklikalo sérii, která se ještě necvičila.
+ * A po pauze se odpočet dopočítá, ne spustí znovu.
  */
 function primaryAction(): void {
+  if (resting.value) {
+    if (timer.remaining.value > 0) timer.resume()
+    else startWork()
+    return
+  }
   if (!isTimed.value) {
     onWorkDone()
     return
   }
   if (timer.remaining.value > 0) timer.resume()
   else startWork()
+}
+
+/** Pauzu je občas potřeba zkrátit – tělo je zahřáté a čekat se nechce. */
+function skipRest(): void {
+  timer.reset()
+  startWork()
 }
 
 function startRest(): void {
@@ -175,9 +189,9 @@ onBeforeUnmount(() => {
 })
 
 const primaryLabel = computed(() => {
+  if (resting.value) return 'Pokračovat v pauze'
   if (!isTimed.value) return 'Hotovo'
-  if (timer.remaining.value > 0) return 'Pokračovat'
-  return resting.value ? 'Přeskočit pauzu' : 'Spustit'
+  return timer.remaining.value > 0 ? 'Pokračovat' : 'Spustit'
 })
 
 const setLabel = computed(() => {
@@ -225,7 +239,24 @@ const setLabel = computed(() => {
             {{ primaryLabel }}
           </button>
           <button v-else class="btn btn-ghost grow btn-lg" @click="timer.pause()">Pauza</button>
-          <button class="btn btn-ghost btn-lg" @click="completeExercise" title="Přeskočit zbytek sérií">›</button>
+          <button
+            v-if="resting"
+            class="btn btn-ghost btn-lg"
+            title="Přeskočit pauzu"
+            aria-label="Přeskočit pauzu"
+            @click="skipRest"
+          >
+            ⏭
+          </button>
+          <button
+            v-else
+            class="btn btn-ghost btn-lg"
+            title="Přeskočit zbytek sérií"
+            aria-label="Přeskočit zbytek sérií"
+            @click="completeExercise"
+          >
+            ›
+          </button>
         </div>
 
         <details class="card" open>

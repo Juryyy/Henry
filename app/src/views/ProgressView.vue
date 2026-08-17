@@ -38,6 +38,12 @@ function save(): void {
   if (waist !== undefined) patch.waistCm = waist
   if (toe !== undefined) patch.toeTouchCm = toe
   if (plank !== undefined) patch.plankSec = plank
+
+  // Prázdný formulář nemá zakládat prázdný záznam.
+  if (Object.keys(patch).length === 1) {
+    showForm.value = false
+    return
+  }
   saveMeasurement(patch)
   form.value = { date: today.value, weightKg: '', waistCm: '', toeTouchCm: '', plankSec: '' }
   showForm.value = false

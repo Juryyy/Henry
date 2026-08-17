@@ -56,9 +56,18 @@ const historyDays = computed(() =>
   })),
 )
 
-function commitEdit(date: string, raw: string): void {
+function commitEdit(date: string, input: HTMLInputElement): void {
+  const raw = input.value.trim()
   const value = Number(raw.replace(/\s/g, ''))
-  if (Number.isFinite(value) && value >= 0) setSteps(date, value, 'manual')
+  // Prázdné pole neznamená nula. Kdyby ano, stačilo by ťuknout do políčka,
+  // omylem ho vymazat a přijít o celý den.
+  if (raw !== '' && Number.isFinite(value) && value >= 0) {
+    setSteps(date, value, 'manual')
+  }
+  // Vrátit do pole to, co je opravdu uložené – jinak by tam odmítnutá
+  // hodnota zůstala viset a tvářila se jako zapsaná.
+  const stored = state.days[date]?.steps ?? 0
+  input.value = stored ? String(stored) : ''
 }
 
 /* Server --------------------------------------------------------------- */
@@ -174,7 +183,7 @@ async function pull(): Promise<void> {
               :value="row.steps || ''"
               :aria-label="`Kroky ${row.date}`"
               placeholder="0"
-              @change="commitEdit(row.date, ($event.target as HTMLInputElement).value)"
+              @change="commitEdit(row.date, $event.target as HTMLInputElement)"
             />
           </li>
         </ul>

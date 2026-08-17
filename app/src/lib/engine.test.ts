@@ -235,6 +235,34 @@ describe('přehled běžícího týdne', () => {
     expect(summary.steps.perRemainingDay).toBe(Math.ceil(45_000 / 7))
   })
 
+  it('dnešní porce se během dne nemění – ubývá jen to, co zbývá', () => {
+    const s = makeState()
+    // Pondělí, nic nenachozeno: porce je sedmina týdne.
+    let summary = summarizeWeek(s, MON, MON, 12 * 60)
+    expect(summary.steps.todayShare).toBe(5_000)
+    expect(summary.steps.todayRemaining).toBe(5_000)
+
+    // Po dvou tisících musí zbývat přesně o dva tisíce míň.
+    setSteps(s, MON, 2_000)
+    summary = summarizeWeek(s, MON, MON, 12 * 60)
+    expect(summary.steps.todayShare).toBe(5_000)
+    expect(summary.steps.todayRemaining).toBe(3_000)
+
+    // A po překročení porce už nezbývá nic.
+    setSteps(s, MON, 6_000)
+    summary = summarizeWeek(s, MON, MON, 12 * 60)
+    expect(summary.steps.todayRemaining).toBe(0)
+  })
+
+  it('porce v úterý počítá s tím, co se nestihlo v pondělí', () => {
+    const s = makeState()
+    setSteps(s, MON, 1_000) // pondělí propadlo
+    const summary = summarizeWeek(s, MON, '2025-08-05', 12 * 60)
+    // Zbývá 34 000 na šest dní.
+    expect(summary.steps.todayShare).toBe(Math.ceil(34_000 / 6))
+    expect(summary.steps.todayRemaining).toBe(summary.steps.todayShare)
+  })
+
   it('u minulého týdne nezbývají žádné dny', () => {
     const s = makeState()
     const summary = summarizeWeek(s, MON, NEXT_MON)

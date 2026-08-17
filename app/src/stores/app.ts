@@ -97,11 +97,10 @@ export const lastMeasurement = computed(() => latestMeasurement(state))
  * Kolik kroků má uživatel dnes ujít. Bere v úvahu dluh: zbytek týdne se
  * rozpočítá na zbývající dny, takže po zkaženém pondělí cíl vyskočí.
  */
-export const stepsNeededToday = computed(() => {
-  // `remaining` už dnešní nachozené kroky odečítá, takže po rozpočítání
-  // na zbývající dny vyjde přímo „kolik ještě dnes“.
-  return Math.max(0, weekSummary.value.steps.perRemainingDay)
-})
+export const stepsNeededToday = computed(() => weekSummary.value.steps.todayRemaining)
+
+/** Celá dnešní porce kroků včetně už nachozených. */
+export const stepPortionToday = computed(() => weekSummary.value.steps.todayShare)
 
 /** Základní denní cíl podle rozložení, bez vlivu dluhu. */
 export const baseStepTarget = computed(() => dailyStepTarget(state, today.value))
@@ -331,7 +330,8 @@ export function buildSnapshot() {
     history,
     date: today.value,
     steps: status.steps,
-    stepsNeededToday: week.steps.perRemainingDay,
+    stepsNeededToday: week.steps.todayRemaining,
+    stepPortionToday: week.steps.todayShare,
     stepTarget: status.stepTarget,
     blocksDone: status.blocksDone,
     blocksTarget: status.blocksTarget,

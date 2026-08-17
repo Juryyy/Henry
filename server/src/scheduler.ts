@@ -18,6 +18,7 @@
 import { sendToAll } from './push.js'
 import {
   addLog,
+  deliveredOn,
   getDb,
   markDirty,
   markSent,
@@ -56,6 +57,9 @@ const IGNORE_LIMIT = 3
 /** Na kolik dní se ztlumí. */
 const MUTE_DAYS = 2
 
+/** Poslední místo v denním rozpočtu dostane jen slot s prioritou do téhle hodnoty. */
+const RESERVED_PRIORITY = 2
+
 interface Slot {
   id: string
   minutes: number
@@ -64,6 +68,15 @@ interface Slot {
   /** Tiché notifikace se do denního rozpočtu nepočítají. */
   silent?: boolean
   build: () => (Message & { url: string; tag: string }) | null
+}
+
+/**
+ * Denní porce kroků. Starší verze appky ji neposílaly, proto ta záloha –
+ * je nepřesná (během dne se posouvá), ale lepší než nic.
+ */
+function dailyPortion(snapshot: StateSnapshot): number {
+  if (snapshot.stepPortionToday > 0) return snapshot.stepPortionToday
+  return snapshot.steps + snapshot.stepsNeededToday
 }
 
 function freshSnapshot(snapshot: StateSnapshot | null, today: string): StateSnapshot | null {
@@ -162,9 +175,10 @@ function buildSlots(
       priority: 1,
       build: () => {
         if (!snapshot) return null
-        // `stepsNeededToday` je zbytek na dnešek, denní porce je tedy
-        // nachozeno + zbytek. Práh se počítá z porce, ne ze zbytku.
-        const portion = snapshot.steps + snapshot.stepsNeededToday
+        // Porci posílá appka hotovou. Skládat ji ze zbytku by nešlo –
+        // `stepsNeededToday` klesá s každým krokem, takže by se práh
+        // během dne posouval spolu s ním.
+        const portion = dailyPortion(snapshot)
         if (portion <= 0) return null
         if (snapshot.steps >= (portion * schedule.stepCheckThreshold) / 100) return null
         return { ...stepCheckMessage(snapshot, schedule.tone, `${seed}steps`), url: '#/kroky', tag: 'steps' }
@@ -180,7 +194,7 @@ function buildSlots(
     priority: 6,
     build: () => {
       if (!snapshot) return null
-      const portion = snapshot.steps + snapshot.stepsNeededToday
+      const portion = dailyPortion(snapshot)
       if (portion <= 0 || snapshot.steps >= portion * 0.85) return null
       if (lastCallsThisWeek(today) >= 3) return null
       return { ...lastCallMessage(snapshot, `${seed}last`), url: '#/kroky', tag: 'steps' }
@@ -242,9 +256,17 @@ function buildSlots(
   return slots
 }
 
-/** Kolik notifikací se zvukem už dnes doopravdy odešlo. */
-function deliveredTodayCount(slots: Slot[], today: string): number {
-  return slots.filter((slot) => !slot.silent && wasDelivered(`${today}|${slot.id}`)).length
+/** Id slotů, které se do denního rozpočtu nepočítají. */
+const SILENT_SLOTS = ['evening', 'test']
+
+/**
+ * Kolik notifikací se zvukem už dnes doopravdy odešlo.
+ *
+ * Počítá se ze zápisů, ne z aktuálního seznamu slotů – ten se přes den mění
+ * (sobotní úkoly zmizí, jakmile je splníš) a rozpočet by se tím vracel.
+ */
+function deliveredTodayCount(today: string): number {
+  return deliveredOn(today, SILENT_SLOTS)
 }
 
 /* ------------------------------------------------------------------ */
@@ -283,7 +305,7 @@ async function runTick(now: Date): Promise<void> {
     })
     .sort((a, b) => a.priority - b.priority)
 
-  let budgetLeft = DAILY_BUDGET - deliveredTodayCount(slots, zoned.date)
+  let budgetLeft = DAILY_BUDGET - deliveredTodayCount(zoned.date)
 
   for (const slot of due) {
     const key = `${zoned.date}|${slot.id}`
@@ -307,6 +329,15 @@ async function runTick(now: Date): Promise<void> {
       continue
     }
 
+    // Sloty se vyhodnocují v pořadí, v jakém nastanou, takže by ranní
+    // připomínky mohly vyčerpat rozpočet dřív, než přijde ke slovu večerní
+    // kontrola kroků. Poslední místo je proto rezervované pro to důležité.
+    if (!slot.silent && budgetLeft === 1 && slot.priority > RESERVED_PRIORITY) {
+      markSent(key, false)
+      addLog('schedule', `${slot.id}: zahozeno, poslední místo držím pro důležitější`)
+      continue
+    }
+
     // Označit PŘED odesláním. Kdyby push trval dlouho a mezitím se stihl
     // spustit další tik, poslal by tutéž notifikaci znovu.
     markSent(key, true)
@@ -320,7 +351,13 @@ async function runTick(now: Date): Promise<void> {
       silent: slot.silent,
       data: { slot: slot.id, date: zoned.date },
     })
-    if (!slot.silent) budgetLeft--
+
+    // Označení proběhlo předem kvůli ochraně proti dvojímu odeslání. Když se
+    // ale reálně nic neodeslalo, nesmí to ujídat z rozpočtu ani se počítat
+    // jako připomínka, kterou uživatel ignoroval.
+    if (result.sent === 0) markSent(key, false)
+    else if (!slot.silent) budgetLeft--
+
     addLog('schedule', `${slot.id}: odesláno ${result.sent}, smazáno ${result.removed}, chyb ${result.failed}`)
   }
 

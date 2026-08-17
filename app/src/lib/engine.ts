@@ -180,6 +180,14 @@ export interface KindSummary {
   remaining: number
   /** Kolik zbývá na den, když to rozpočítám na zbývající dny včetně dneška. */
   perRemainingDay: number
+  /**
+   * Dnešní porce. Počítá se z toho, co bylo hotové *před* dneškem, takže se
+   * během dne nemění – ujdeš tisíc kroků a o tisíc ti klesne „zbývá dnes“,
+   * ne o sedminu.
+   */
+  todayShare: number
+  /** Kolik z dnešní porce ještě zbývá. */
+  todayRemaining: number
   /** Kolik by mělo být hotovo, kdyby šel člověk rovnoměrně. */
   expectedByNow: number
   progressPct: number
@@ -234,6 +242,7 @@ function summarizeKind(
   week: WeekKey,
   kind: LedgerKind,
   achieved: number,
+  achievedToday: number,
   elapsed: number,
   daysRemaining: number,
 ): KindSummary {
@@ -242,6 +251,12 @@ function summarizeKind(
   const required = Math.max(0, base + debt - credit)
   const remaining = Math.max(0, required - achieved)
   const perRemainingDay = daysRemaining > 0 ? Math.ceil(remaining / daysRemaining) : remaining
+
+  const beforeToday = Math.max(0, achieved - achievedToday)
+  const todayShare =
+    daysRemaining > 0 ? Math.ceil(Math.max(0, required - beforeToday) / daysRemaining) : 0
+  const todayRemaining = Math.max(0, todayShare - achievedToday)
+
   const expectedByNow = Math.round((required * Math.min(7, elapsed)) / 7)
   return {
     kind,
@@ -252,6 +267,8 @@ function summarizeKind(
     achieved,
     remaining,
     perRemainingDay,
+    todayShare,
+    todayRemaining,
     expectedByNow,
     progressPct: required > 0 ? Math.min(100, Math.round((achieved / required) * 100)) : 100,
     pace: paceOf(achieved, required, expectedByNow, daysRemaining),
@@ -272,13 +289,16 @@ export function summarizeWeek(
   const daysRemaining = isCurrent ? 7 - weekdayIndex(today) : 0
   const elapsed = elapsedFraction(daysElapsed, isCurrent, minutesNow)
 
+  const stepsToday = isCurrent ? (state.days[today]?.steps ?? 0) : 0
+  const blocksToday = isCurrent ? completedBlocks(state.days[today]) : 0
+
   return {
     week,
     isCurrent,
     daysElapsed,
     daysRemaining,
-    steps: summarizeKind(state, week, 'steps', weekSteps(state, week), elapsed, daysRemaining),
-    blocks: summarizeKind(state, week, 'blocks', weekBlocks(state, week), elapsed, daysRemaining),
+    steps: summarizeKind(state, week, 'steps', weekSteps(state, week), stepsToday, elapsed, daysRemaining),
+    blocks: summarizeKind(state, week, 'blocks', weekBlocks(state, week), blocksToday, elapsed, daysRemaining),
     tasks: summarizeTasks(state, week),
   }
 }
@@ -352,8 +372,10 @@ function closeKind(
       week, kind, required, achieved,
       debt: Math.min(debtIn, debtCap(state, kind)),
       // Kredit se protahuje dál stejně jako dluh – nachodil si ho poctivě
-      // a týden bez dat není důvod mu ho sebrat.
-      rawDebt: debtIn, credit: creditIn, forgiven: 0, closedAt: now, skipped: true,
+      // a týden bez dat není důvod mu ho sebrat. Když má ale uživatel přenos
+      // přebytku vypnutý, nemá se objevit ani tudy.
+      rawDebt: debtIn, credit: creditCap(state, kind) > 0 ? creditIn : 0,
+      forgiven: 0, closedAt: now, skipped: true,
     }
   }
 
@@ -436,18 +458,39 @@ export function reopenWeeksFrom(state: AppState, week: WeekKey): void {
   const removed = state.ledger.filter((e) => daysBetween(week, e.week) >= 0)
   if (removed.length === 0) return
 
-  // Zvýšení laťky se musí vrátit zpátky, jinak by ho opětovné uzavření
-  // připočetlo znovu a každá oprava kroků by cíl vyšroubovala výš.
-  const raises = removed
-    .filter((e) => e.raisedTargetFrom !== undefined)
-    .sort((a, b) => a.week.localeCompare(b.week))
-  if (raises.length > 0) {
-    state.settings.steps.weeklyTarget = raises[0].raisedTargetFrom as number
-  }
+  revertRaises(state, removed)
 
   state.ledger = state.ledger.filter((e) => daysBetween(week, e.week) < 0)
   const previous = addWeeks(week, -1)
   state.lastClosedWeek = state.ledger.some((e) => e.week === previous) ? previous : undefined
+}
+
+/**
+ * Vrátí zvýšení laťky, které se chystáme přepočítat.
+ *
+ * Dělá se to jen tehdy, když je to bezpečné:
+ *  – automatické zvyšování je zapnuté (jinak by se laťka snížila a už nikdy
+ *    nezvedla, protože přepočet ji zpátky nezvedne),
+ *  – aktuální cíl pořád odpovídá tomu, co naposledy nastavilo zvýšení
+ *    (jinak by se přepsala ruční změna od uživatele).
+ */
+function revertRaises(state: AppState, removed: LedgerEntry[]): void {
+  if (!state.settings.steps.rampEnabled) return
+
+  const raises = removed
+    .filter((e) => e.raisedTargetTo !== undefined)
+    .sort((a, b) => a.week.localeCompare(b.week))
+  if (raises.length === 0) return
+
+  const last = raises[raises.length - 1] as LedgerEntry
+  if (state.settings.steps.weeklyTarget !== last.raisedTargetTo) return
+
+  const first = raises[0] as LedgerEntry
+  // Starší záznamy `raisedTargetFrom` nemají – dopočítá se z kroku zvyšování.
+  const from =
+    first.raisedTargetFrom ??
+    Math.max(0, (first.raisedTargetTo as number) - state.settings.steps.rampStep)
+  state.settings.steps.weeklyTarget = from
 }
 
 function rolloverTasks(state: AppState, week: WeekKey): void {

@@ -129,6 +129,7 @@ app.post('/api/sync', requireAuth, json, (req: Request, res: Response) => {
       date: String(s.date ?? ''),
       steps: Number(s.steps ?? 0),
       stepsNeededToday: Number(s.stepsNeededToday ?? 0),
+      stepPortionToday: Number(s.stepPortionToday ?? 0),
       stepTarget: Number(s.stepTarget ?? 0),
       blocksDone: Number(s.blocksDone ?? 0),
       blocksTarget: Number(s.blocksTarget ?? 3),

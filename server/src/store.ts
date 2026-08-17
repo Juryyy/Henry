@@ -26,6 +26,8 @@ export interface StateSnapshot {
   steps: number
   /** Kolik kroků má dnes ještě ujít. */
   stepsNeededToday: number
+  /** Celá dnešní porce včetně nachozených – stabilní po celý den. */
+  stepPortionToday: number
   /** Denní cíl kroků. */
   stepTarget: number
   /** Dokončené bloky dnes. */
@@ -100,6 +102,17 @@ export const DEFAULT_SCHEDULE: ScheduleConfig = {
   tone: 'coach',
 }
 
+/**
+ * Starší databáze měly v `sent` ISO timestamp odeslání. Nová verze rozlišuje
+ * 'sent' a 'skip'; bez převodu by se všechny historické záznamy tvářily jako
+ * nedoručené a den po aktualizaci by se rozjelo ztlumení nanečisto.
+ */
+function migrateSent(target: Database): void {
+  for (const [key, value] of Object.entries(target.sent)) {
+    if (value !== 'sent' && value !== 'skip') target.sent[key] = 'sent'
+  }
+}
+
 function emptyDb(): Database {
   return {
     version: 1,
@@ -125,6 +138,7 @@ export function loadDb(): Database {
     if (existsSync(config.dataFile)) {
       const parsed = JSON.parse(readFileSync(config.dataFile, 'utf8')) as Partial<Database>
       db = { ...emptyDb(), ...parsed, schedule: { ...DEFAULT_SCHEDULE, ...parsed.schedule } }
+      migrateSent(db)
     }
   } catch (err) {
     // Poškozený soubor odsuneme stranou místo toho, abychom ho za pár vteřin
@@ -233,12 +247,20 @@ export function wasDelivered(key: string): boolean {
   return db.sent[key] === 'sent'
 }
 
+/** Kolik notifikací už dnes doopravdy odešlo (podle zápisů, ne podle slotů). */
+export function deliveredOn(date: string, ignore: string[] = []): number {
+  const prefix = `${date}|`
+  return Object.entries(db.sent).filter(
+    ([key, value]) => value === 'sent' && key.startsWith(prefix) && !ignore.includes(key.slice(prefix.length)),
+  ).length
+}
+
 export function markSent(key: string, delivered: boolean): void {
   db.sent[key] = delivered ? 'sent' : 'skip'
+  markDirty()
   // Úklid: držíme jen posledních ~400 záznamů, ať soubor neroste donekonečna.
   const keys = Object.keys(db.sent)
   if (keys.length > 400) {
     for (const k of keys.sort().slice(0, keys.length - 400)) delete db.sent[k]
   }
-  markDirty()
 }

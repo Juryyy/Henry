@@ -12,6 +12,7 @@ import {
   dailyStepTarget,
   dayStatus,
   longestStreak,
+  recalculateFrom,
   streakInfo,
   summarizeWeek,
 } from '@/lib/engine'
@@ -57,13 +58,25 @@ watch(
 /** Milníky, které padly od posledního otevření – zobrazí se jako gratulace. */
 export const freshMilestones = ref<Milestone[]>([])
 
+/**
+ * Přepočítá milníky a zařadí nově odemčené do fronty gratulací.
+ *
+ * Volá se po každé akci, která může milník odemknout. Odkládá se do
+ * mikroúkolu, aby se stihla propsat právě provedená změna stavu.
+ */
+function queueMilestoneCheck(): void {
+  queueMicrotask(() => {
+    const fresh = checkMilestones(state, today.value)
+    if (fresh.length > 0) freshMilestones.value = [...freshMilestones.value, ...fresh]
+  })
+}
+
 /** Zkontroluje, jestli nezačal nový den / týden, a doúčtuje dluhovou knihu. */
 export function refreshClock(): void {
   const key = todayKey()
   if (key !== today.value) today.value = key
   closeDueWeeks(state, today.value)
-  const fresh = checkMilestones(state, today.value)
-  if (fresh.length > 0) freshMilestones.value = [...freshMilestones.value, ...fresh]
+  queueMilestoneCheck()
 }
 
 export function initStore(): void {
@@ -125,6 +138,10 @@ export function setSteps(date: DateKey, steps: number, source: StepSource = 'man
   day.steps = Math.max(0, Math.round(steps))
   day.stepsSource = source
   day.stepsUpdatedAt = new Date().toISOString()
+  // Dopsané kroky do už uzavřeného týdne musí přepočítat dluh – jinak by
+  // v knize zůstalo číslo z doby, kdy ta data ještě nebyla zapsaná.
+  recalculateFrom(state, date, today.value)
+  queueMilestoneCheck()
 }
 
 export function addSteps(date: DateKey, delta: number): void {
@@ -198,6 +215,8 @@ export function completeBlock(
   const block = getBlockLog(date, slot, planId)
   block.completedAt = new Date().toISOString()
   if (durationSec !== undefined) block.durationSec = Math.round(durationSec)
+  recalculateFrom(state, date, today.value)
+  queueMilestoneCheck()
 }
 
 export function uncompleteBlock(date: DateKey, slot: BlockSlot): void {
@@ -226,6 +245,7 @@ export function toggleTaskDone(taskId: string, date: DateKey = today.value): voi
   else log.dates.push(date)
   log.dates.sort()
   state.weeklyTaskLogs[key] = log
+  queueMilestoneCheck()
 }
 
 export function upsertTask(task: WeeklyTask): void {
@@ -243,12 +263,7 @@ export function removeTask(taskId: string): void {
 /* ------------------------------------------------------------------ */
 
 export function saveMeasurement(m: Measurement): void {
-  // Milníky se přepočítají hned, ne až zítra – nová naměřená hodnota je
-  // přesně ten okamžik, kdy má gratulace smysl.
-  queueMicrotask(() => {
-    const fresh = checkMilestones(state, today.value)
-    if (fresh.length > 0) freshMilestones.value = [...freshMilestones.value, ...fresh]
-  })
+  queueMilestoneCheck()
   const idx = state.measurements.findIndex((x) => x.date === m.date)
   const clean: Measurement = { ...m }
   if (idx >= 0) state.measurements[idx] = { ...state.measurements[idx], ...clean }

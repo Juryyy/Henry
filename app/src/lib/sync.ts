@@ -12,8 +12,8 @@ import { ref } from 'vue'
 import { pullSteps, syncWithServer } from './api'
 import { buildSnapshot, setSteps, state, today, todayStatus } from '@/stores/app'
 import { resubscribeOnLaunch, setBadge } from './sw-client'
-import { todayKey, weekKeyOf } from './date'
-import { closeDueWeeks, reopenWeeksFrom } from './engine'
+import { todayKey } from './date'
+import { recalculateFrom } from './engine'
 
 export const syncing = ref(false)
 export const lastSyncError = ref<string | null>(null)
@@ -65,13 +65,7 @@ export async function syncNow(force = false): Promise<boolean> {
     // Kroky mohly dorazit za den, který spadá do už uzavřeného týdne – typicky
     // když se appka týden neotevřela. Uzávěrku je pak potřeba přepočítat,
     // jinak by v knize zůstal dluh z dat, která tehdy ještě nebyla k dispozici.
-    if (oldestChanged) {
-      const week = weekKeyOf(oldestChanged)
-      if (state.lastClosedWeek && week <= state.lastClosedWeek) {
-        reopenWeeksFrom(state, week)
-        closeDueWeeks(state, today.value)
-      }
-    }
+    if (oldestChanged) recalculateFrom(state, oldestChanged, today.value)
 
     state.settings.server.lastSyncAt = new Date().toISOString()
     return true

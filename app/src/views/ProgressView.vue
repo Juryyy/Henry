@@ -232,11 +232,11 @@ function toeTouchLabel(cm: number): string {
               <div class="small strong">{{ formatDayShort(m.date) }}</div>
               <div class="tiny faint">{{ relativeDayLabel(m.date, today) }}</div>
             </div>
-            <div class="tiny muted right">
-              <span v-if="m.weightKg">{{ m.weightKg }} kg</span>
-              <span v-if="m.waistCm"> · pas {{ m.waistCm }} cm</span>
-              <span v-if="m.toeTouchCm !== undefined"> · předklon {{ m.toeTouchCm }} cm</span>
-              <span v-if="m.plankSec"> · prkno {{ m.plankSec }} s</span>
+            <div class="values grow">
+              <span v-if="m.weightKg" class="badge num">{{ m.weightKg }} kg</span>
+              <span v-if="m.waistCm" class="badge num">pas {{ m.waistCm }}</span>
+              <span v-if="m.toeTouchCm !== undefined" class="badge num">zem {{ m.toeTouchCm }}</span>
+              <span v-if="m.plankSec" class="badge num">prkno {{ m.plankSec }} s</span>
             </div>
             <button class="btn btn-sm btn-ghost" aria-label="Smazat" @click="removeMeasurement(m.date)">✕</button>
           </li>
@@ -305,9 +305,16 @@ function toeTouchLabel(cm: number): string {
   background: var(--text-faint);
 }
 
-.measurement { padding: 8px 0; gap: 8px; align-items: flex-start; }
+.measurement { padding: 10px 0; gap: 10px; align-items: center; }
 
-.when { flex-shrink: 0; white-space: nowrap; }
+.when { flex-shrink: 0; white-space: nowrap; width: 62px; }
+
+.values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  justify-content: flex-end;
+}
 .measurement + .measurement { border-top: 1px solid var(--border); }
 .right { text-align: right; }
 </style>

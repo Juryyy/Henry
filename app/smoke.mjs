@@ -111,7 +111,7 @@ async function shot(name) {
 }
 
 const screens = [
-  ['01-dnes', ''],
+  ['01-dnes', '#/'],
   ['02-cviceni', '#/cviceni'],
   ['03-blok', '#/cviceni/2'],
   ['04-kroky', '#/kroky'],
@@ -127,6 +127,20 @@ for (const [name, path] of screens) {
   await page.waitForTimeout(300)
   await shot(name)
 }
+
+// Úvodní průvodce (bez uložených dat).
+const fresh = await browser.newContext({ ...devices['iPhone 14'], colorScheme: 'dark' })
+const freshPage = await fresh.newPage()
+watch(freshPage)
+await freshPage.goto(BASE, { waitUntil: 'networkidle' })
+await freshPage.waitForTimeout(400)
+await freshPage.screenshot({ path: `${OUT}/00-uvod.png`, fullPage: true })
+await freshPage.getByRole('button', { name: 'Jdeme na to' }).click()
+await freshPage.getByRole('button', { name: 'Dál' }).click()
+await freshPage.waitForTimeout(400)
+await freshPage.screenshot({ path: `${OUT}/00b-uvod-kroky.png`, fullPage: true })
+console.log('  ✓ 00-uvod')
+await fresh.close()
 
 // Průchod blokem: spustit první cvik a nechat běžet odpočet.
 await page.goto(`${BASE}#/cviceni/1`, { waitUntil: 'networkidle' })

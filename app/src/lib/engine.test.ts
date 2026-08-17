@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   carryInto,
   closeDueWeeks,
+  recalculateFrom,
   reopenWeeksFrom,
   weekHasData,
   currentStreak,
@@ -574,6 +575,87 @@ describe('regrese', () => {
     expect(s.settings.steps.weeklyTarget).toBe(35_000) // zvýšení vzato zpět
     closeDueWeeks(s, addDays(MON, 14))
     expect(s.settings.steps.weeklyTarget).toBe(afterFirst)
+  })
+
+  it('ruční změna cíle po zvýšení laťky se přepočtem nezruší ani nezdvojí', () => {
+    const s = makeState((x) => {
+      x.settings.steps.rampEnabled = true
+      x.settings.steps.rampStep = 3_500
+    })
+    for (let i = 0; i < 7; i++) setSteps(s, addDays(MON, i), 6_000)
+
+    closeDueWeeks(s, NEXT_MON)
+    expect(s.settings.steps.weeklyTarget).toBe(38_500)
+
+    // Uživatel si cíl mezitím přenastavil ručně.
+    s.settings.steps.weeklyTarget = 40_000
+
+    recalculateFrom(s, MON, NEXT_MON)
+
+    // Ruční hodnota zůstane a laťka se nepřičte podruhé.
+    expect(s.settings.steps.weeklyTarget).toBe(40_000)
+  })
+
+  it('dopsané kroky do uzavřeného týdne dluh přepočítají', () => {
+    const s = makeState()
+    setSteps(s, MON, 100)
+    closeDueWeeks(s, NEXT_MON)
+    expect(carryInto(s, NEXT_MON, 'steps').debt).toBe(10_000)
+
+    // Dodatečný ruční zápis zbytku týdne.
+    for (let i = 1; i < 7; i++) setSteps(s, addDays(MON, i), 6_000)
+    recalculateFrom(s, MON, NEXT_MON)
+
+    expect(carryInto(s, NEXT_MON, 'steps').debt).toBe(0)
+  })
+
+  it('rozpis uzavřeného týdne sedí na součet', () => {
+    const s = makeState()
+    setSteps(s, MON, 5_000)
+    closeDueWeeks(s, addDays(MON, 14))
+
+    for (const entry of s.ledger) {
+      expect(entry.base + entry.debtIn - entry.creditIn).toBe(entry.required)
+    }
+  })
+
+  it('očekávané tempo respektuje rozložení týdne', () => {
+    const s = makeState((x) => {
+      // Přes týden nic, celý objem o víkendu.
+      x.settings.steps.distribution = [0, 0, 0, 0, 0, 50, 50]
+    })
+    // Ve středu večer nemá být nikdo „pozadu“, když má víkendový plán.
+    const summary = summarizeWeek(s, MON, '2025-08-06', 21 * 60)
+    expect(summary.steps.expectedByNow).toBe(0)
+    expect(summary.steps.pace).not.toBe('critical')
+  })
+
+  it('nulové podíly na konci týdne nenechají zbytek zmizet', () => {
+    const s = makeState((x) => {
+      x.settings.steps.distribution = [50, 50, 0, 0, 0, 0, 0]
+    })
+    // Je sobota, celý zbytek týdne má podíl nula – porce nesmí být nulová.
+    const summary = summarizeWeek(s, MON, '2025-08-09', 12 * 60)
+    expect(summary.steps.todayShare).toBeGreaterThan(0)
+    expect(Object.is(summary.steps.todayShare, -0)).toBe(false)
+  })
+
+  it('týden bez dat nepřenese ani týdenní úkol', () => {
+    const s = makeState()
+    closeDueWeeks(s, NEXT_MON)
+    const gym = summarizeWeek(s, NEXT_MON, NEXT_MON).tasks.find((t) => t.task.id === 'gym')!
+    expect(gym.carried).toBe(0)
+  })
+
+  it('nejdelší série není nikdy kratší než ta právě běžící', () => {
+    const s = makeState()
+    for (let i = 0; i < 5; i++) {
+      const date = addDays(MON, i)
+      setSteps(s, date, 5_000)
+      doBlocks(s, date, 3)
+    }
+    const today = addDays(MON, 4)
+    expect(longestStreak(s, today)).toBeGreaterThanOrEqual(streakInfo(s, today).days)
   })
 
   it('reopenWeeksFrom u týdne, který v knize není, nic nerozbije', () => {

@@ -11,6 +11,10 @@ Zaměření: **zpevnit střed těla, zhubnout, dostat se rukama na zem.**
 
 ## Co to umí
 
+**Úvodní průvodce.** Při prvním spuštění se Henry zeptá, kolik chodíš *teď*,
+a první cíl postaví jen o desetinu výš. Cíl nastavený od stolu je nejrychlejší
+cesta k tomu appku po týdnu smazat.
+
 **Kroky s dluhem.** Týden je jeden hrnec. Co v pondělí nedochodíš, se rozpustí
 do zbytku týdne – denní porce se prostě zvedne. Co zbude v neděli, se přenese
 do dalšího týdne, ale **jen do stropu dvou denních dávek**. Zbytek se odpustí.
@@ -42,9 +46,19 @@ večer – rozsah roste z pravidelnosti, ne z toho, jak silně do toho jdeš.
 **46 cviků** s postupem, chybami, lehčí i těžší variantou a poznámkou, kdy to
 nedělat. Co se ti nelíbí nebo tě to bolí, vyřadíš a Henry to nahradí jiným.
 
+**Série, která snese jeden špatný den.** Za každých sedm dní máš záchranu –
+propadlý den ji spotřebuje, ale sérii neshodí. Teprve druhý propadlý den
+v témže týdnu ji ukončí. Nemoc nebo služebku navíc označíš jako den odpočinku
+a nepočítá se vůbec.
+
+**Milníky** místo prázdných odznaků: první blok, sedm dní v řadě, 100 000 kroků,
+minuta v prkně, půl cesty k zemi, dlaně na zemi. Odemykají se za věci, které
+něco znamenají.
+
 **Notifikace, které opravdu chodí.** Na iPhonu s appkou přidanou na plochu.
-Maximálně čtyři se zvukem denně, noční klid, a když konkrétní připomínku
-třikrát po sobě ignoruješ, na dva dny se odmlčí.
+Maximálně čtyři se zvukem denně, noční klid, poslední místo v denním rozpočtu
+je rezervované pro to důležité, a když konkrétní připomínku třikrát po sobě
+ignoruješ, na dva dny se odmlčí.
 
 **Kroky z Apple Health** přes Zkratku, která je jednou denně pošle na server.
 Nebo si je zapíšeš ručně, appka funguje i tak.
@@ -57,6 +71,9 @@ Nebo si je zapíšeš ručně, appka funguje i tak.
 
 ```
 app/       PWA (Vue 3 + Vite + TypeScript). Data žijí v telefonu.
+  src/lib/       výpočty: dluh, série, plán dne, milníky – čisté funkce s testy
+  src/views/     obrazovky
+  e2e/           testy, které appku proklikají v prohlížeči
 server/    Malý Node/Express: posílá notifikace a přebírá kroky z Health.
 ```
 
@@ -97,9 +114,22 @@ Pak v appce **Nastavení → Server**: adresa serveru a token. Tlačítko
 ### Testy a kontroly
 
 ```bash
-cd app    && npm test && npm run typecheck && npm run build
-cd server && npm run typecheck && npm run build
+cd app
+npm test          # jednotkové testy výpočtů (49)
+npm run e2e       # e2e testy v prohlížeči (32) – projdou appku jako uživatel
+npm run typecheck
+npm run build
+
+cd ../server
+npm test
+npm run typecheck
+npm run build
 ```
+
+E2E testy jedou proti produkčnímu buildu v mobilním rozlišení a kontrolují
+celé toky: úvodního průvodce, zápis kroků, průchod blokem cvičení včetně
+odpočtu, přenos dluhu, bankrot, měření, milníky, zálohu i registraci service
+workeru. Běží i v CI (`.github/workflows/ci.yml`).
 
 ---
 

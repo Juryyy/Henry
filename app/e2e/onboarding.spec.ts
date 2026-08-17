@@ -75,4 +75,35 @@ test.describe('úvodní průvodce', () => {
     await ready(page)
     await expect(page).not.toHaveURL(/#\/start/)
   })
+
+  test('do průvodce se nedá vrátit a přepsat si nastavení', async ({ page, context }) => {
+    await seed(context, { onboarded: true, weeklyTarget: 42_000 })
+    await page.goto('/#/start')
+    await ready(page)
+
+    await expect(page).not.toHaveURL(/#\/start/)
+    expect((await readState(page)).settings.steps.weeklyTarget).toBe(42_000)
+  })
+
+  test('kdo už chodí hodně, nedostane nižší cíl, než na kolik je zvyklý', async ({ page, context }) => {
+    await seed(context, { onboarded: false })
+    await page.goto('/#/')
+    await page.getByRole('button', { name: 'Jdeme na to' }).click()
+    await page.getByRole('button', { name: 'Dál' }).click()
+
+    await page.locator('input[type="range"]').fill('11000')
+    // 11 000 × 7 × 1,1 = 84 700 → zaokrouhleno 84 500, ne zaseknuto na 49 000.
+    await expect(page.locator('.callout')).toContainText(/84\s500/)
+    await expect(page.locator('.callout')).toContainText('už splňuješ')
+
+    for (let i = 0; i < 5; i++) await page.getByRole('button', { name: 'Dál' }).click()
+    await page.getByRole('button', { name: 'Spustit Henryho' }).click()
+    await ready(page)
+
+    const state = await readState(page)
+    expect(state.settings.steps.weeklyTarget).toBe(84_500)
+    // Meta se musí posunout nahoru, jinak by se automatické zvyšování
+    // rovnou vyplo na cíli, který je pod aktuálním.
+    expect(state.settings.steps.goalWeeklyTarget).toBeGreaterThanOrEqual(84_500)
+  })
 })

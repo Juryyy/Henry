@@ -30,14 +30,20 @@ const weight = ref('')
 const progress = computed(() => (step.value / (STEPS.length - 1)) * 100)
 
 /**
- * První týdenní cíl. Zaokrouhlený na půltisíce, aby to bylo lidské číslo,
- * a nikdy vyšší než cílová meta.
+ * První týdenní cíl: o desetinu víc, než kolik uživatel chodí teď,
+ * zaokrouhleno na půltisíce, aby to bylo lidské číslo.
+ *
+ * Schválně se neomezuje shora metou 49 000. Kdo už teď chodí deset tisíc
+ * denně, dostal by cíl NIŽŠÍ, než kolik reálně nachodí – a průvodce by u toho
+ * tvrdil, že je to „o desetinu víc“.
  */
 const firstTarget = computed(() => {
-  const raw = baseline.value * 7 * 1.1
-  const rounded = Math.round(raw / 500) * 500
-  return Math.max(14_000, Math.min(state.settings.steps.goalWeeklyTarget, rounded))
+  const rounded = Math.round((baseline.value * 7 * 1.1) / 500) * 500
+  return Math.max(14_000, rounded)
 })
+
+/** Splňuje uživatel doporučených 7 000 kroků denně už teď? */
+const alreadyAtGoal = computed(() => baseline.value * 7 >= state.settings.steps.goalWeeklyTarget)
 
 function next(): void {
   if (step.value < STEPS.length - 1) step.value++
@@ -56,6 +62,9 @@ function finish(): void {
   const s = state.settings
   s.name = name.value.trim()
   s.steps.weeklyTarget = firstTarget.value
+  // Meta nemůže být pod aktuálním cílem, jinak by automatické zvyšování
+  // nemělo kam růst a rovnou by se vyplo.
+  s.steps.goalWeeklyTarget = Math.max(s.steps.goalWeeklyTarget, firstTarget.value)
   s.exercise.level = level.value
   s.exercise.blocksPerDay = blocksPerDay.value
   s.notifications.blockTimes = [...times.value]
@@ -144,8 +153,14 @@ const LEVELS = [
             <div class="strong">První cíl: {{ num(firstTarget) }} kroků týdně</div>
             <div class="tiny muted">
               To je {{ num(Math.round(firstTarget / 7)) }} denně, jen o desetinu víc než teď.
-              Po každém splněném týdnu se laťka zvedne o 500 kroků denně, až na 7 000 –
-              číslo, za kterým se zdravotní přínos už jen mírně ohýbá.
+              <template v-if="alreadyAtGoal">
+                Doporučených 7 000 denně už splňuješ, takže se laťka dál sama zvedat nebude –
+                nastavit se to dá kdykoli ručně.
+              </template>
+              <template v-else>
+                Po každém splněném týdnu se zvedne o 500 kroků denně, až na 7 000 –
+                číslo, za kterým se zdravotní přínos už jen mírně ohýbá.
+              </template>
             </div>
           </div>
         </section>

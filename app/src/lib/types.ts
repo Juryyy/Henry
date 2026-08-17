@@ -145,6 +145,12 @@ export interface LedgerEntry {
   /** Týden, který se uzavíral. */
   week: WeekKey
   kind: LedgerKind
+  /** Základní týdenní cíl v době uzávěrky (bez dluhu a kreditu). */
+  base: number
+  /** Dluh, který do týdne vstupoval. */
+  debtIn: number
+  /** Kredit, který do týdne vstupoval. */
+  creditIn: number
   /** Kolik se mělo udělat (cíl + dluh z minula − kredit). */
   required: number
   /** Kolik se udělalo. */

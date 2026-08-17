@@ -83,9 +83,12 @@ export const router = createRouter({
  * viděl by výchozí cíle, které o něm nic neví.
  */
 router.beforeEach((to) => {
+  const onboarded = !!state.settings.onboardedAt
+  // Zpátky do průvodce se jít nedá. Znovu projitý průvodce by přepsal cíl,
+  // úroveň i datum začátku – a tím shodil sérii i historii.
+  if (to.name === 'start') return onboarded ? { path: '/' } : true
   if (to.meta.public) return true
-  if (state.settings.onboardedAt) return true
-  return { name: 'start' }
+  return onboarded ? true : { name: 'start' }
 })
 
 router.afterEach((to) => {

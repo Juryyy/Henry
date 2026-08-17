@@ -112,10 +112,27 @@ function mergeDefaults<T>(fallback: T, incoming: unknown): T {
 /** Postupné migrace uloženého stavu na aktuální schéma. */
 function migrate(raw: Record<string, unknown>): Record<string, unknown> {
   const state = { ...raw }
-  // Zatím jen jedna verze schématu. Až přibude v2, přidá se sem krok:
-  //   if ((state.schemaVersion ?? 0) < 2) { …; state.schemaVersion = 2 }
+
+  // Úvodní průvodce přibyl až později. Kdo už v appce má data, ho vidět nemá –
+  // jinak by mu přepsal cíl i datum začátku a přišel by o návaznost historie.
+  const settings = state.settings as Record<string, unknown> | undefined
+  if (settings && !settings.onboardedAt && hasAnyData(state)) {
+    settings.onboardedAt = new Date().toISOString()
+  }
+
   state.schemaVersion = SCHEMA_VERSION
   return state
+}
+
+/** Používal už uživatel appku, nebo je to čistý začátek? */
+function hasAnyData(state: Record<string, unknown>): boolean {
+  const days = state.days as Record<string, unknown> | undefined
+  if (days && Object.keys(days).length > 0) return true
+  const measurements = state.measurements as unknown[] | undefined
+  if (measurements && measurements.length > 0) return true
+  const ledger = state.ledger as unknown[] | undefined
+  if (ledger && ledger.length > 0) return true
+  return false
 }
 
 export function loadState(): AppState {

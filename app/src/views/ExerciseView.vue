@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { CATEGORY_LABELS, LEVEL_LABELS, TAG_LABELS, getExercise } from '@/data/exercises'
+import { CATEGORY_LABELS, CATEGORY_TONE, LEVEL_LABELS, TAG_LABELS, getExercise } from '@/data/exercises'
 import { getFigure } from '@/data/figures'
 import { state } from '@/stores/app'
 import ExerciseFigure from '@/components/ExerciseFigure.vue'
@@ -48,7 +48,16 @@ const doseText = computed(() => {
         <h1>{{ exercise.name }}</h1>
         <p class="muted small" style="margin-top: 4px">{{ exercise.target }}</p>
         <div class="row wrap" style="gap: 6px; margin-top: 10px">
-          <span class="badge badge-info">{{ CATEGORY_LABELS[exercise.category] }}</span>
+          <!-- Tečka je ta samá barva, kterou má postavička níž a štítek
+               v katalogu – aby barva u obrázku něco znamenala. -->
+          <span class="badge row" style="gap: 6px">
+            <span
+              class="tone-dot"
+              :style="{ '--tone': CATEGORY_TONE[exercise.category] }"
+              aria-hidden="true"
+            ></span>
+            {{ CATEGORY_LABELS[exercise.category] }}
+          </span>
           <span class="badge">{{ LEVEL_LABELS[exercise.level] }}</span>
           <span class="badge badge-accent">{{ doseText }}</span>
           <span class="badge">pauza {{ exercise.restSeconds }} s</span>

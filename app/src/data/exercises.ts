@@ -1546,6 +1546,23 @@ export const CATEGORY_LABELS: Record<Exercise['category'], string> = {
   cardio: 'Kardio',
 }
 
+/**
+ * Barva podle zaměření cviku.
+ *
+ * Drží se na jednom místě, protože ji potřebuje kreslená ukázka i filtr
+ * v katalogu. Kdyby se rozešly, barva postavičky by přestala odpovídat
+ * štítku, podle kterého si člověk vybírá – a tím by přestala něco znamenat.
+ *
+ * Je to informace navíc, ne jediná: název skupiny je vždycky vedle.
+ */
+export const CATEGORY_TONE: Record<Exercise['category'], string> = {
+  core: 'var(--fig-core)',
+  strength: 'var(--fig-sila)',
+  mobility: 'var(--fig-rozhybani)',
+  stretch: 'var(--fig-protazeni)',
+  cardio: 'var(--fig-kardio)',
+}
+
 export const LEVEL_LABELS: Record<1 | 2 | 3, string> = {
   1: 'začátek',
   2: 'střední',

@@ -419,6 +419,19 @@ ul, ol { margin: 0; padding-left: 1.25em; }
   color: var(--accent);
 }
 
+/*
+ * Tečka v barvě zaměření cviku. Používá ji filtr v katalogu i štítek
+ * v detailu – barvu dostane přes `--tone`, ať se ta samá tečka dá obarvit
+ * podle skupiny bez pěti tříd navíc.
+ */
+.tone-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--tone, var(--accent));
+  flex-shrink: 0;
+}
+
 /* Řádek štítků, který se zalomí. Vodorovné rolování řeší `.scroll-x`. */
 .chips {
   display: flex;

@@ -515,10 +515,16 @@ const confirmReset = ref(false)
             </div>
           </div>
 
-          <p class="tiny faint">
-            V katalogu je {{ EXERCISES.length }} cviků, vyřazených
-            {{ s.exercise.excludedExerciseIds.length }}. Vyřazovat se dá v detailu cviku.
-          </p>
+          <RouterLink to="/cviky" class="row-between nav-row">
+            <span class="small">
+              🏋 Které cviky chci
+              <span class="tiny faint block">
+                {{ EXERCISES.length }} v katalogu, {{ s.exercise.excludedExerciseIds.length }}
+                vyřazených
+              </span>
+            </span>
+            <span class="faint" aria-hidden="true">›</span>
+          </RouterLink>
         </div>
       </section>
 
@@ -720,7 +726,7 @@ const confirmReset = ref(false)
             </button>
           </details>
 
-          <RouterLink to="/health" class="row-between health-link">
+          <RouterLink to="/health" class="row-between nav-row">
             <span class="small">
               📲 Kroky z Apple Health
               <span class="tiny faint block">Token, adresa i postup na jedné obrazovce</span>
@@ -845,7 +851,9 @@ const confirmReset = ref(false)
 </template>
 
 <style scoped>
-.health-link {
+/* Řádek, který vede jinam. Vypadá jako políčko nastavení, protože jím je –
+   jen se jeho obsah nevejde na tuhle obrazovku. */
+.nav-row {
   text-decoration: none;
   color: inherit;
   border: 1px solid var(--border);

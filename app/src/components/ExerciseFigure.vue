@@ -13,6 +13,7 @@ import {
   type Point,
   type Pose,
 } from '@/lib/figure'
+import { CATEGORY_TONE } from '@/data/exercises'
 import type { ExerciseCategory } from '@/lib/types'
 
 /**
@@ -40,16 +41,7 @@ const props = withDefaults(
   { animated: false, category: 'core' },
 )
 
-/** Odstíny se jmenují česky podle zaměření, ne podle anglické kategorie. */
-const CATEGORY_TONE: Record<ExerciseCategory, string> = {
-  mobility: 'rozhybani',
-  core: 'core',
-  stretch: 'protazeni',
-  strength: 'sila',
-  cardio: 'kardio',
-}
-
-const tone = computed(() => `var(--fig-${CATEGORY_TONE[props.category] ?? 'core'})`)
+const tone = computed(() => CATEGORY_TONE[props.category] ?? CATEGORY_TONE.core)
 
 const phase = ref(0)
 const reduceMotion = ref(false)

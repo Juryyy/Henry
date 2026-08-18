@@ -41,12 +41,32 @@ test.describe('navigace a shell', () => {
     await expect(page.getByRole('link', { name: /Kočka/ })).toHaveCount(0)
 
     await page.getByPlaceholder('Hledat cvik…').fill('')
-    await page.getByRole('button', { name: 'Protažení', exact: true }).click()
+    // Štítek nese i počty („Protažení – zbývá 11 z 11“), takže se hledá začátkem.
+    await page.getByRole('button', { name: /^Protažení –/ }).click()
     await expect(page.getByRole('link', { name: /Protažení hamstringů vleže/ })).toBeVisible()
 
     await page.getByRole('link', { name: /Protažení hamstringů vleže/ }).click()
     await expect(page.getByRole('heading', { name: /Protažení hamstringů vleže/ })).toBeVisible()
     await expect(page.getByText('Postup')).toBeVisible()
+  })
+
+  test('cvik se dá vyřadit rovnou z katalogu a vrátit zpátky', async ({ page, context }) => {
+    // Dřív šlo vyřazovat jen v detailu cviku, tedy jeden po druhém přes
+    // šestačtyřicet obrazovek. Volba u obrázku je celý smysl té mřížky.
+    await seed(context)
+    await page.goto('/#/cviky')
+    await ready(page)
+
+    await page.getByRole('button', { name: 'Vyřadit z plánu: Sedy-lehy' }).click()
+    await expect(page.getByRole('button', { name: 'Vrátit do plánu: Sedy-lehy' })).toBeVisible()
+
+    // Volba musí přežít zavření appky, jinak je k ničemu.
+    await page.reload()
+    await ready(page)
+    await expect(page.getByRole('button', { name: 'Vrátit do plánu: Sedy-lehy' })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Vrátit všechny' }).click()
+    await expect(page.getByRole('button', { name: 'Vyřadit z plánu: Sedy-lehy' })).toBeVisible()
   })
 
   test('neznámá adresa skončí na hlavní obrazovce', async ({ page, context }) => {

@@ -37,13 +37,20 @@ Po každém splněném týdnu se laťka zvedne o 3 500 (+500 denně), až na 49 
 (7 000 denně). Po nesplněném týdnu se nezvedne – zvyšovat nároky někomu, komu
 to zrovna nevyšlo, je nejjistější způsob, jak ho odradit.
 
-**Tři bloky po patnácti minutách.** Každý má jinou práci:
+**Tři bloky po patnácti minutách.** Výchozí rozvržení, každý blok má jinou práci:
 
 | Blok | Kdy | Co | Proč |
 |---|---|---|---|
 | Ráno | 7:15 | rozhýbání páteře, dýchání, McGillova trojka | ploténky jsou po noci nasáklé vodou, ohýbat se pod zátěží je pro ně ráno nejhorší – proto tu nejsou sedy-lehy |
 | Poledne | 12:30 | core naostro, cvik na kyčle a dvě minuty kardia | přerušení sezení, které je ten hlavní problém; kardio proto, že hubne se z výdeje, ne z prkna |
 | Večer | 20:00 | protahování se zaměřením na zadní stranu stehen | večer je rozsah pohybu největší a sval prohřátý |
+
+**Rozvržení je jen výchozí.** Každou ze tří pozic v dni si pojmenuješ, dáš jí
+ikonu, vybereš zaměření (rozhýbání / core / protažení / **kardio**) a délku
+od 5 do 30 minut – nebo ji vypneš. „Cvičím jen večer, dvacet minut protahování"
+je legitimní plán a appka se podle toho přepočítá včetně dluhu i notifikací.
+Pozice zůstávají stejné i po přejmenování: visí na nich zápisy odcvičených
+bloků a odkazy z notifikací.
 
 Plán se každý den mírně obmění, kostra zůstává. Protažení hamstringů je každý
 večer – rozsah roste z pravidelnosti, ne z toho, jak silně do toho jdeš.
@@ -162,14 +169,14 @@ dokud tam žádný není.
 
 ```bash
 cd app
-npm test          # výpočty, plán, slučování, úkoly a ukázky cviků (147)
-npm run e2e       # e2e testy v prohlížeči (51) – projdou appku jako uživatel
+npm test          # výpočty, plán, slučování, úkoly a ukázky cviků (148)
+npm run e2e       # e2e testy v prohlížeči (53) – projdou appku jako uživatel
 npm run typecheck
 npm run build
 npm run screenshots  # přegeneruje obrázky v docs/screenshots
 
 cd ../server
-npm test          # účty, klíče, HTTP rozhraní, plánovač, slučování dat (153)
+npm test          # účty, klíče, HTTP rozhraní, plánovač, slučování dat (156)
 npm run typecheck
 npm run build
 ```

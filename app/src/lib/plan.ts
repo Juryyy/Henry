@@ -20,7 +20,7 @@
 
 import { getExercise } from '@/data/exercises'
 import { daysBetween, hashString } from './date'
-import type { AppState, BlockPlan, BlockSlot, Exercise, PlanItem } from './types'
+import type { AppState, BlockConfig, BlockFocus, BlockPlan, BlockSlot, Exercise, PlanItem } from './types'
 import type { DateKey } from './date'
 
 /* ------------------------------------------------------------------ */
@@ -43,21 +43,25 @@ type Pick =
   | { pool: string[]; sets?: number; dose?: number }
 
 interface BlockTemplate {
-  slot: BlockSlot
+  focus: BlockFocus
+  /** Výchozí název a ikona. Uživatel si je může přepsat. */
   title: string
   subtitle: string
   emoji: string
   picks: Pick[]
   /** Cviky, které se přidají, jen když zbývá čas. */
   bonus: string[]
+  /** Vynechat cviky, kde se pod zátěží ohýbá bederní páteř (ráno). */
+  avoidSpinalFlexion?: boolean
 }
 
 export const BLOCK_TEMPLATES: BlockTemplate[] = [
   {
-    slot: 0,
+    focus: 'rozhybani',
     title: 'Ráno',
     subtitle: 'Rozhýbat a nastartovat',
     emoji: '🌅',
+    avoidSpinalFlexion: true,
     picks: [
       { fixed: 'kocka-velbloud' },
       { fixed: 'branicni-dychani' },
@@ -70,7 +74,7 @@ export const BLOCK_TEMPLATES: BlockTemplate[] = [
     bonus: ['hip-hinge-dowel', 'supine-figure-four'],
   },
   {
-    slot: 1,
+    focus: 'core',
     title: 'Poledne',
     subtitle: 'Core a rozproudit krev',
     emoji: '💪',
@@ -87,7 +91,7 @@ export const BLOCK_TEMPLATES: BlockTemplate[] = [
     bonus: ['hip-hinge-dowel', 'ninety-ninety-hip', 'cossack-adductor-rock'],
   },
   {
-    slot: 2,
+    focus: 'protazeni',
     title: 'Večer',
     subtitle: 'Protažení – cesta na zem',
     emoji: '🧘',
@@ -102,10 +106,69 @@ export const BLOCK_TEMPLATES: BlockTemplate[] = [
     ],
     bonus: ['seated-butterfly-adductor', 'jefferson-curl-bodyweight'],
   },
+  {
+    focus: 'kardio',
+    title: 'Kardio',
+    subtitle: 'Zvednout tep',
+    emoji: '🔥',
+    picks: [
+      // Rozehřátí, tři intervaly, protažení lýtek na závěr. Dávky z katalogu
+      // počítají se samostatným tréninkem, do bloku se musí zkrátit.
+      { pool: ['marching-in-place', 'brisk-walk'], sets: 1, dose: 90 },
+      { pool: ['step-jacks-low-impact', 'jumping-jacks', 'shadow-boxing'], sets: 3, dose: 45 },
+      { pool: ['step-ups', 'stair-climbing'], sets: 3, dose: 45 },
+      { pool: ['shadow-boxing', 'burpee-elevated-regression', 'jumping-jacks'], sets: 2, dose: 40 },
+      { fixed: 'wall-calf-stretch' },
+    ],
+    bonus: ['standing-forward-fold', 'kneeling-hip-flexor-stretch'],
+  },
 ]
 
-/** Cviky, kde se pod zátěží ohýbá bederní páteř – ráno se vynechávají. */
-const AVOID_IN_MORNING = 'flexe-patere'
+/* ------------------------------------------------------------------ */
+/*  Nastavení bloků                                                    */
+/* ------------------------------------------------------------------ */
+
+export function templateFor(focus: BlockFocus): BlockTemplate {
+  return BLOCK_TEMPLATES.find((t) => t.focus === focus) ?? BLOCK_TEMPLATES[0]!
+}
+
+/** Popisky zaměření do nastavení. */
+export const FOCUS_LABELS: Record<BlockFocus, string> = {
+  rozhybani: 'Rozhýbání a stabilita',
+  core: 'Střed těla',
+  protazeni: 'Protažení',
+  kardio: 'Kardio',
+}
+
+/** Výchozí rozvržení dne. Kostra, kterou si uživatel může přeskládat. */
+export function defaultBlocks(): BlockConfig[] {
+  return ([0, 1, 2] as BlockSlot[]).map((slot) => {
+    const template = BLOCK_TEMPLATES[slot]!
+    return { slot, enabled: true, title: template.title, emoji: template.emoji, focus: template.focus, minutes: 15 }
+  })
+}
+
+export function blockConfig(state: AppState, slot: BlockSlot): BlockConfig {
+  return state.settings.exercise.blocks.find((b) => b.slot === slot) ?? defaultBlocks()[slot]!
+}
+
+/**
+ * Bloky, které se dnes cvičí. Pozice zůstávají 0–2 i když je některý vypnutý:
+ * na slotu visí záznamy o odcvičení i odkazy z notifikací.
+ */
+export function activeBlocks(state: AppState): BlockConfig[] {
+  const enabled = state.settings.exercise.blocks.filter((b) => b.enabled)
+  // Všechno vypnuté by znamenalo den bez cvičení a dluh, který nejde splatit.
+  return enabled.length ? enabled : [blockConfig(state, 0)]
+}
+
+/** Kolik bloků denně se počítá do cíle i do dluhu. */
+export function blocksPerDay(state: AppState): number {
+  return activeBlocks(state).length
+}
+
+/** Cviky, kde se pod zátěží ohýbá bederní páteř – v ranním bloku se vynechávají. */
+const AVOID_SPINAL_FLEXION = 'flexe-patere'
 
 /* ------------------------------------------------------------------ */
 /*  Dávkování                                                          */
@@ -151,15 +214,15 @@ const MAX_ITEMS = 8
 /** Pevný bod, od kterého se počítá rotace – jen aby byla stabilní. */
 const ROTATION_EPOCH = '2024-01-01'
 
-function isUsable(state: AppState, exercise: Exercise | undefined, slot: BlockSlot): exercise is Exercise {
+function isUsable(state: AppState, exercise: Exercise | undefined, avoidFlexion = false): exercise is Exercise {
   if (!exercise) return false
   if (state.settings.exercise.excludedExerciseIds.includes(exercise.id)) return false
-  if (slot === 0 && exercise.tags.includes(AVOID_IN_MORNING)) return false
+  if (avoidFlexion && exercise.tags.includes(AVOID_SPINAL_FLEXION)) return false
   return true
 }
 
-function usableFrom(state: AppState, ids: string[], slot: BlockSlot): Exercise[] {
-  return ids.map(getExercise).filter((e): e is Exercise => isUsable(state, e, slot))
+function usableFrom(state: AppState, ids: string[], avoidFlexion: boolean): Exercise[] {
+  return ids.map(getExercise).filter((e): e is Exercise => isUsable(state, e, avoidFlexion))
 }
 
 /**
@@ -167,9 +230,9 @@ function usableFrom(state: AppState, ids: string[], slot: BlockSlot): Exercise[]
  * progrese nad jeho úrovní (pool bez lehké varianty), vezme se ta nejlehčí –
  * lepší lehčí náhrada než díra v bloku.
  */
-function pickProgression(state: AppState, ids: string[], slot: BlockSlot): Exercise | null {
+function pickProgression(state: AppState, ids: string[], avoidFlexion: boolean): Exercise | null {
   const level = state.settings.exercise.level
-  const candidates = usableFrom(state, ids, slot)
+  const candidates = usableFrom(state, ids, avoidFlexion)
   if (candidates.length === 0) return null
   const atLevel = candidates.filter((e) => e.level <= level)
   if (atLevel.length === 0) return candidates.reduce((a, b) => (a.level <= b.level ? a : b))
@@ -181,9 +244,9 @@ function pickProgression(state: AppState, ids: string[], slot: BlockSlot): Exerc
  * Vybere cvik ze zaměnitelných. Rotace jede podle dne, ale přeskakuje cviky
  * nad zvolenou úrovní a ty, které si uživatel vyřadil.
  */
-function pickFromPool(state: AppState, ids: string[], slot: BlockSlot, rotation: number): Exercise | null {
+function pickFromPool(state: AppState, ids: string[], avoidFlexion: boolean, rotation: number): Exercise | null {
   const level = state.settings.exercise.level
-  const candidates = usableFrom(state, ids, slot)
+  const candidates = usableFrom(state, ids, avoidFlexion)
   if (candidates.length === 0) return null
 
   const atLevel = candidates.filter((e) => e.level <= level)
@@ -196,9 +259,11 @@ function pickFromPool(state: AppState, ids: string[], slot: BlockSlot, rotation:
 /* ------------------------------------------------------------------ */
 
 export function buildBlock(state: AppState, date: DateKey, slot: BlockSlot): BlockPlan {
-  const template = BLOCK_TEMPLATES.find((t) => t.slot === slot) ?? BLOCK_TEMPLATES[0]!
+  const config = blockConfig(state, slot)
+  const template = templateFor(config.focus)
+  const avoidFlexion = template.avoidSpinalFlexion === true
   const level = state.settings.exercise.level
-  const budget = state.settings.exercise.minutesPerBlock * 60
+  const budget = config.minutes * 60
   const rotation = Math.max(0, daysBetween(ROTATION_EPOCH, date))
 
   /** Cviky s ručně nastavenou dávkou – těm se pak nepřidávají série. */
@@ -211,11 +276,11 @@ export function buildBlock(state: AppState, date: DateKey, slot: BlockSlot): Blo
 
     if ('fixed' in pick) {
       const found = getExercise(pick.fixed)
-      exercise = isUsable(state, found, slot) ? found : null
+      exercise = isUsable(state, found, avoidFlexion) ? found : null
     } else if ('progression' in pick) {
-      exercise = pickProgression(state, pick.progression, slot)
+      exercise = pickProgression(state, pick.progression, avoidFlexion)
     } else {
-      exercise = pickFromPool(state, pick.pool, slot, rotation + index)
+      exercise = pickFromPool(state, pick.pool, avoidFlexion, rotation + index)
       if (pick.sets !== undefined || pick.dose !== undefined) override = { sets: pick.sets, dose: pick.dose }
     }
 
@@ -254,7 +319,7 @@ export function buildBlock(state: AppState, date: DateKey, slot: BlockSlot): Blo
     if (items.length >= MAX_ITEMS || total() >= budget * 0.88) break
     const id = bonus[(i + (bonus.length ? rotation % bonus.length : 0)) % bonus.length]!
     const exercise = getExercise(id)
-    if (!isUsable(state, exercise, slot) || exercise.level > level) continue
+    if (!isUsable(state, exercise, avoidFlexion) || exercise.level > level) continue
     if (items.some((it) => it.exerciseId === id)) continue
     const candidate = toPlanItem(exercise, level)
     if (total() + candidate.seconds > budget * 1.08) continue
@@ -289,7 +354,7 @@ export function buildBlock(state: AppState, date: DateKey, slot: BlockSlot): Blo
 
   return {
     slot,
-    title: template.title,
+    title: config.title,
     subtitle: template.subtitle,
     id: planId(state, date, slot),
     items,
@@ -302,18 +367,18 @@ export function buildBlock(state: AppState, date: DateKey, slot: BlockSlot): Blo
  * vyřazené cviky), změní se i id a rozdělaný blok se resetuje.
  */
 export function planId(state: AppState, date: DateKey, slot: BlockSlot): string {
-  const { level, minutesPerBlock, excludedExerciseIds } = state.settings.exercise
-  const seed = `${date}|${slot}|${level}|${minutesPerBlock}|${excludedExerciseIds.slice().sort().join(',')}`
+  const { level, excludedExerciseIds } = state.settings.exercise
+  const config = blockConfig(state, slot)
+  const seed = `${date}|${slot}|${level}|${config.focus}|${config.minutes}|${excludedExerciseIds.slice().sort().join(',')}`
   return `p${hashString(seed).toString(36)}`
 }
 
 export function buildDay(state: AppState, date: DateKey): BlockPlan[] {
-  const count = Math.max(1, Math.min(3, state.settings.exercise.blocksPerDay))
-  return Array.from({ length: count }, (_, i) => buildBlock(state, date, i as BlockSlot))
+  return activeBlocks(state).map((block) => buildBlock(state, date, block.slot))
 }
 
-export function blockEmoji(slot: BlockSlot): string {
-  return BLOCK_TEMPLATES.find((t) => t.slot === slot)?.emoji ?? '💪'
+export function blockEmoji(state: AppState, slot: BlockSlot): string {
+  return blockConfig(state, slot).emoji
 }
 
 /** Popis dávky pro UI: „3× 30 s na každou stranu“. */

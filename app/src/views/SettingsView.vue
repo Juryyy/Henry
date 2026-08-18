@@ -39,6 +39,8 @@ import {
 } from '@/lib/sw-client'
 import { exportJson, importJson, resetAll, state } from '@/stores/app'
 import WeeklyTasks from '@/components/WeeklyTasks.vue'
+import DayBlocks from '@/components/DayBlocks.vue'
+import { blocksPerDay } from '@/lib/plan'
 
 const s = computed(() => state.settings)
 
@@ -62,9 +64,7 @@ const distributionSum = computed(() =>
 
 /** Kolik bloků je za týden povinných a kolik se jich maximálně přenese. */
 const weeklyBlocks = computed(() => weeklyBlockTarget(state))
-const maxBlockCap = computed(() =>
-  Math.max(0, s.value.exercise.blocksPerDay * 7 - weeklyBlocks.value),
-)
+const maxBlockCap = computed(() => Math.max(0, blocksPerDay(state) * 7 - weeklyBlocks.value))
 const effectiveBlockCap = computed(() => debtCap(state, 'blocks'))
 
 function resetDistribution(): void {
@@ -487,31 +487,8 @@ const confirmReset = ref(false)
           </div>
 
           <div class="field">
-            <label>Bloků denně</label>
-            <div class="segmented">
-              <button
-                v-for="n in 3"
-                :key="n"
-                :aria-pressed="s.exercise.blocksPerDay === n"
-                @click="s.exercise.blocksPerDay = n"
-              >
-                {{ n }}×
-              </button>
-            </div>
-          </div>
-
-          <div class="field">
-            <label>Minut na blok</label>
-            <div class="segmented">
-              <button
-                v-for="m in [10, 15, 20]"
-                :key="m"
-                :aria-pressed="s.exercise.minutesPerBlock === m"
-                @click="s.exercise.minutesPerBlock = m"
-              >
-                {{ m }} min
-              </button>
-            </div>
+            <label>Rozvržení dne</label>
+            <DayBlocks />
           </div>
 
           <div class="field">
@@ -532,7 +509,7 @@ const confirmReset = ref(false)
             </label>
             <input id="blockdebt" v-model.number="s.exercise.debtCapBlocks" type="range" min="0" :max="maxBlockCap" step="1" />
             <div class="hint">
-              Za týden zvládneš nejvýš {{ s.exercise.blocksPerDay * 7 }} bloků a
+              Za týden zvládneš nejvýš {{ blocksPerDay(state) * 7 }} bloků a
               {{ weeklyBlocks }} jich je povinných, takže se dá přenést nanejvýš
               {{ maxBlockCap }}. Vyšší strop by vyrobil dluh, který nejde splatit.
             </div>

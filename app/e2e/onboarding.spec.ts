@@ -52,7 +52,9 @@ test.describe('úvodní průvodce', () => {
     expect(state.settings.name).toBe('Martin')
     expect(state.settings.steps.weeklyTarget).toBe(38_500)
     expect(state.settings.exercise.level).toBe(2)
-    expect(state.settings.exercise.blocksPerDay).toBe(2)
+    // Průvodce zapne první dva bloky; třetí zůstane vypnutý, ale nezmizí –
+    // pozice v dni drží zápisy odcvičení i odkazy z notifikací.
+    expect(state.settings.exercise.blocks.map((b: any) => b.enabled)).toEqual([true, true, false])
     expect(state.measurements).toHaveLength(1)
     expect(state.measurements[0].toeTouchCm).toBe(17)
 

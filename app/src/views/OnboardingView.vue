@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { num, parseNumber } from '@/lib/format'
 import { saveMeasurement, state, today } from '@/stores/app'
+import { defaultBlocks } from '@/lib/plan'
 
 /**
  * Úvodní průvodce.
@@ -66,7 +67,12 @@ function finish(): void {
   // nemělo kam růst a rovnou by se vyplo.
   s.steps.goalWeeklyTarget = Math.max(s.steps.goalWeeklyTarget, firstTarget.value)
   s.exercise.level = level.value
-  s.exercise.blocksPerDay = blocksPerDay.value
+  // Průvodce nechává výchozí rozvržení a jen zapne první N bloků. Detaily
+  // (názvy, zaměření, délku) si člověk doladí v nastavení, když bude chtít.
+  s.exercise.blocks = defaultBlocks().map((block, index) => ({
+    ...block,
+    enabled: index < blocksPerDay.value,
+  }))
   s.notifications.blockTimes = [...times.value]
   s.startDate = today.value
   s.onboardedAt = new Date().toISOString()

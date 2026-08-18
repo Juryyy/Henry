@@ -20,6 +20,7 @@ import { checkMilestones, type Milestone } from '@/lib/milestones'
 import { touch, touchEverything, touchSettings, tombstone } from '@/lib/sync-records'
 import { exportState, flushState, importState, loadState, saveState } from '@/lib/storage'
 import { defaultWeeklyTasks, moveTask as moveTasks } from '@/lib/tasks'
+import { blocksPerDay } from '@/lib/plan'
 import type {
   AppState,
   BlockLog,
@@ -453,7 +454,7 @@ export function buildSnapshot() {
     steps: status.steps,
     stepsNeededToday: week.steps.todayRemaining,
     stepPortionToday: week.steps.todayShare,
-    blocksPerDay: state.settings.exercise.blocksPerDay,
+    blocksPerDay: blocksPerDay(state),
     stepTarget: status.stepTarget,
     blocksDone: status.blocksDone,
     blocksTarget: status.blocksTarget,

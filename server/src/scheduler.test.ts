@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * Odesílání push je nahrazené špionem – zajímá nás, KDY a S ČÍM se volá,
  * ne jestli dojde notifikace na telefon.
  */
-const sent: { title: string; body: string; tag?: string; silent?: boolean; userId?: string }[] = []
+const sent: { title: string; body: string; tag?: string; url?: string; silent?: boolean; userId?: string }[] = []
 
 vi.mock('./push.js', () => ({
   sendToUser: vi.fn(
@@ -206,9 +206,32 @@ describe('plánovač', () => {
   })
 
   it('připomínají se jen bloky, které uživatel opravdu cvičí', async () => {
-    setSchedule(userId, { blocksPerDay: 1 })
+    setSchedule(userId, { activeSlots: [0] })
     await tick(at('2026-08-17', '12:30'))
     expect(sent).toHaveLength(0)
+  })
+
+  it('kdo cvičí jen večer, ráno nic nedostane – a večer ano', async () => {
+    setSchedule(userId, { activeSlots: [2] })
+    await tick(at('2026-08-17', '07:15'))
+    expect(sent).toHaveLength(0)
+
+    await tick(at('2026-08-17', '20:00'))
+    expect(sent).toHaveLength(1)
+    // Odkaz míří na pozici bloku, ne na pořadí mezi zapnutými.
+    expect(sent[0]?.url).toBe('#/cviceni/2')
+  })
+
+  it('vlastní název bloku se propíše do notifikace', async () => {
+    setSchedule(userId, { activeSlots: [0], blockTitles: ['Rozcvička u kafe', '', ''] })
+    await tick(at('2026-08-18', '07:15'))
+    expect(sent[0]?.title).toBe('Rozcvička u kafe')
+  })
+
+  it('prázdný seznam bloků neumlčí všechno – vrátí se výchozí', async () => {
+    setSchedule(userId, { activeSlots: [] })
+    await tick(at('2026-08-17', '12:30'))
+    expect(sent).toHaveLength(1)
   })
 
   it('neaktuální snímek nezpůsobí nesmyslnou hlášku o krocích', async () => {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { blocksPerDay } from '@/lib/plan'
 import ProgressBar from '@/components/ProgressBar.vue'
 import WeekStrip from '@/components/WeekStrip.vue'
 import { addWeeks, daysBetween, formatWeekRange, type WeekKey } from '@/lib/date'
@@ -61,7 +62,7 @@ function doBankruptcy(): void {
 const totalDebt = computed(() => summary.value.steps.debtIn)
 
 /** Kolik bloků jde za týden vůbec stihnout – strop dluhu z toho vychází. */
-const maxBlocks = computed(() => state.settings.exercise.blocksPerDay * 7)
+const maxBlocks = computed(() => blocksPerDay(state) * 7)
 
 function paceLabel(pace: string): { text: string; cls: string } {
   switch (pace) {

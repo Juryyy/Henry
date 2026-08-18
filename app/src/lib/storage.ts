@@ -1,4 +1,5 @@
 import { touchEverything } from './sync-records'
+import { defaultBlocks } from './plan'
 import { defaultWeeklyTasks, TASK_ORDER_STEP } from './tasks'
 import type { AppState, Settings } from './types'
 import { todayKey } from './date'
@@ -40,8 +41,7 @@ export function defaultSettings(): Settings {
       creditCapDays: 1,
     },
     exercise: {
-      blocksPerDay: 3,
-      minutesPerBlock: 15,
+      blocks: defaultBlocks(),
       level: 1,
       debtCapBlocks: 6,
       graceDaysPerWeek: 1,
@@ -115,6 +115,22 @@ function migrate(raw: Record<string, unknown>): Record<string, unknown> {
   // historii na server a nic se neztratí.
   if (!state.meta) {
     state.meta = { updatedAt: {}, deleted: {}, stampAll: true }
+  }
+
+  // Bloky byly dřív jen počet a jedna délka pro všechny. Teď má každý vlastní
+  // název, ikonu, zaměření i délku – dosavadní nastavení se překlopí tak,
+  // aby se plán nezměnil: zapnou se první tři podle `blocksPerDay`.
+  const exercise = settings?.exercise as Record<string, unknown> | undefined
+  if (exercise && !Array.isArray(exercise.blocks)) {
+    const count = Math.max(1, Math.min(3, Number(exercise.blocksPerDay) || 3))
+    const minutes = Math.max(5, Math.min(45, Number(exercise.minutesPerBlock) || 15))
+    exercise.blocks = defaultBlocks().map((block, index) => ({
+      ...block,
+      enabled: index < count,
+      minutes,
+    }))
+    delete exercise.blocksPerDay
+    delete exercise.minutesPerBlock
   }
 
   // Pořadí úkolů přibylo později. Bez něj by se seznam po synchronizaci

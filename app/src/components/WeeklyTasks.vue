@@ -95,7 +95,7 @@ const targetHint = (task: WeeklyTask): string =>
             <span>
               <span class="emoji" aria-hidden="true">{{ task.emoji }}</span>
               {{ task.title }}
-              <span class="tiny faint block">{{ targetHint(task) }}</span>
+              <span class="tiny faint hint-line">{{ targetHint(task) }}</span>
             </span>
           </label>
           <button
@@ -161,7 +161,7 @@ const targetHint = (task: WeeklyTask): string =>
             <input type="checkbox" :checked="task.rollover" @change="patch(task, { rollover: !task.rollover })" />
             <span>
               Přenášet nesplněné
-              <span class="tiny faint block">
+              <span class="tiny faint hint-line">
                 Co za týden nestihneš, se přičte k dalšímu. U měření se to nehodí – zmeškané vážení
                 dohánět nemusíš.
               </span>
@@ -273,6 +273,11 @@ const targetHint = (task: WeeklyTask): string =>
 
 .emoji {
   margin-right: 4px;
+}
+
+/* Popisek pod názvem musí být na vlastním řádku, jinak se zalomí doprostřed. */
+.hint-line {
+  display: block;
 }
 
 .body {

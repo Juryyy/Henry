@@ -208,11 +208,30 @@ export interface StepSettings {
   creditCapDays: number
 }
 
+/**
+ * Čím se blok zabývá. Určuje, z jakých cviků se skládá – název a ikonu si
+ * uživatel volí zvlášť, takže „Ráno" může klidně obsahovat kardio.
+ */
+export type BlockFocus = 'rozhybani' | 'core' | 'protazeni' | 'kardio'
+
+export interface BlockConfig {
+  /**
+   * Pozice v dni. Nemění se ani při přejmenování – visí na ní záznamy
+   * odcvičených bloků, časy notifikací i odkazy z nich.
+   */
+  slot: BlockSlot
+  /** Vypnutý blok se neplánuje, nepřipomíná a nepočítá do dluhu. */
+  enabled: boolean
+  title: string
+  emoji: string
+  focus: BlockFocus
+  /** Délka bloku v minutách. Každý může být jinak dlouhý. */
+  minutes: number
+}
+
 export interface ExerciseSettings {
-  /** Kolik bloků denně (výchozí 3). */
-  blocksPerDay: number
-  /** Délka bloku v minutách. */
-  minutesPerBlock: number
+  /** Tři pozice v dni. Kolik se jich cvičí, rozhoduje `enabled`. */
+  blocks: BlockConfig[]
   /** Obtížnost katalogu. */
   level: 1 | 2 | 3
   /** Kolik nesplněných bloků se maximálně přenese do dalšího týdne. */

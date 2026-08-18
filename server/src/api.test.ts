@@ -321,7 +321,11 @@ describe('data', () => {
   it('snímek a rozvrh se uloží k účtu', async () => {
     const { c } = await register('ja@example.com')
     await c.json('/api/sync', {
-      body: { snapshot: { date: '2026-08-17', steps: 3_000 }, schedule: { tone: 'drsny', blocksPerDay: 9 } },
+      body: {
+        snapshot: { date: '2026-08-17', steps: 3_000 },
+        // Nesmysly v rozvrhu server srovná, ne odmítne – appka jede dál.
+        schedule: { tone: 'drsny', activeSlots: [9, 1, 1, -2, 'x'] },
+      },
     })
 
     await c.json('/api/ingest/steps', { body: { date: '2026-08-17', steps: 6_000 } })

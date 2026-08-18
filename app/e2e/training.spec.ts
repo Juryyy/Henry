@@ -106,13 +106,16 @@ test.describe('cvičení', () => {
     await expect(page.getByRole('link', { name: /Protažení hamstringů vleže/ })).toHaveCount(0)
   })
 
-  test('počet bloků z nastavení se propíše do plánu dne', async ({ page, context }) => {
+  test('vypnuté bloky se propíšou do plánu dne', async ({ page, context }) => {
     await seed(context)
     await page.goto('/#/nastaveni')
     await ready(page)
 
-    await page.getByRole('button', { name: '1×', exact: true }).click()
-    await expect.poll(async () => (await readState(page)).settings.exercise.blocksPerDay).toBe(1)
+    await page.getByRole('checkbox', { name: /Poledne/ }).uncheck()
+    await page.getByRole('checkbox', { name: /Večer/ }).uncheck()
+    await expect
+      .poll(async () => (await readState(page)).settings.exercise.blocks.filter((b: any) => b.enabled).length)
+      .toBe(1)
 
     await page.goto('/#/')
     await ready(page)

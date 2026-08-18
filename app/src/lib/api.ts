@@ -250,7 +250,12 @@ export function syncWithServer(
   notifications: NotificationSettings,
   snapshot: unknown,
   timezone: string,
-  blocksPerDay: number,
+  /**
+   * Které bloky se opravdu cvičí. Posílají se pozice, ne počet: kdo cvičí
+   * jen večer, nesmí dostat ranní připomínku – a odkaz z notifikace míří
+   * na pozici, takže se pole časů nesmí zkracovat.
+   */
+  activeSlots: number[],
 ): Promise<{ serverSteps: ServerStepEntry | null }> {
   return request('/api/sync', {
     method: 'POST',
@@ -259,7 +264,7 @@ export function syncWithServer(
       schedule: {
         enabled: notifications.enabled,
         timezone,
-        blocksPerDay,
+        activeSlots,
         blockTimes: notifications.blockTimes,
         stepCheckTime: notifications.stepCheckTime,
         stepCheckThreshold: notifications.stepCheckThreshold,

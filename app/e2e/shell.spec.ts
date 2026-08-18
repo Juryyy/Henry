@@ -197,6 +197,45 @@ test.describe('nastavení', () => {
     ).toBe(false)
   })
 
+  test('blok se dá přejmenovat, přeladit i vypnout', async ({ page, context }) => {
+    await seed(context)
+    await page.goto('/#/nastaveni')
+    await ready(page)
+
+    await page.getByRole('button', { name: 'Upravit blok Poledne' }).click()
+    await page.getByLabel('Název').fill('Oběd')
+    await page.getByLabel('Název').blur()
+    await page.getByRole('button', { name: 'Kardio' }).click()
+    await page.getByRole('button', { name: '30 minut' }).click()
+
+    await expect.poll(async () => {
+      const block = (await readState(page)).settings.exercise.blocks[1]
+      return [block?.title, block?.focus, block?.minutes]
+    }).toEqual(['Oběd', 'kardio', 30])
+
+    // Vypnutý blok zmizí z plánu dne, ale pozice zbylých se nepřečíslují.
+    await page.getByRole('checkbox', { name: /Ráno/ }).uncheck()
+    await page.goto('/#/')
+    await ready(page)
+    await expect(page.getByText('Oběd')).toBeVisible()
+    await expect(page.getByText('Ráno', { exact: true })).toHaveCount(0)
+  })
+
+  test('poslední zapnutý blok vypnout nejde', async ({ page, context }) => {
+    await seed(context)
+    await page.goto('/#/nastaveni')
+    await ready(page)
+
+    await page.getByRole('checkbox', { name: /Ráno/ }).uncheck()
+    await page.getByRole('checkbox', { name: /Poledne/ }).uncheck()
+
+    // Třetí je poslední – nesmí jít vypnout, jinak by nebylo co plánovat.
+    await expect(page.getByRole('checkbox', { name: /Večer/ })).toBeDisabled()
+    await expect.poll(async () =>
+      (await readState(page)).settings.exercise.blocks.filter((b: any) => b.enabled).length,
+    ).toBe(1)
+  })
+
   test('export a import zálohy zachovají data', async ({ page, context }) => {
     await seed(context, { days: { [dayKey(0)]: { steps: 4321 } } })
     await page.goto('/#/nastaveni')

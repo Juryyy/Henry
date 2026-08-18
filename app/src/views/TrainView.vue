@@ -58,7 +58,7 @@ function toggleDone(slot: number): void {
       <section v-for="plan in plans" :key="plan.slot" class="card block">
         <div class="row-between" style="margin-bottom: 10px">
           <div class="row" style="gap: 10px">
-            <span style="font-size: 1.3rem">{{ blockEmoji(plan.slot) }}</span>
+            <span style="font-size: 1.3rem">{{ blockEmoji(state, plan.slot) }}</span>
             <div>
               <div class="strong">{{ plan.title }}</div>
               <div class="tiny faint">{{ plan.subtitle }} · {{ Math.round(plan.totalSeconds / 60) }} min</div>

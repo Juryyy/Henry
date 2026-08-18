@@ -215,7 +215,7 @@ const allBlocksDone = computed(() => blocksDone.value >= plans.value.length)
             :class="{ done: isBlockDone(today, plan.slot) }"
             @click="router.push(`/cviceni/${plan.slot}`)"
           >
-            <span class="emoji">{{ blockEmoji(plan.slot) }}</span>
+            <span class="emoji">{{ blockEmoji(state, plan.slot) }}</span>
             <span class="grow text">
               <span class="strong">{{ plan.title }}</span>
               <span class="tiny muted">{{ plan.subtitle }}</span>

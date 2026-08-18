@@ -9,6 +9,7 @@
  */
 
 import { ref } from 'vue'
+import { activeBlocks } from './plan'
 import { pullSteps, pushState, syncWithServer } from './api'
 import { buildSnapshot, setSteps, state, today, todayStatus, withRemoteApply } from '@/stores/app'
 import { signedIn } from '@/stores/auth'
@@ -48,7 +49,7 @@ export async function syncNow(force = false): Promise<boolean> {
       state.settings.notifications,
       buildSnapshot(),
       state.settings.timezone,
-      state.settings.exercise.blocksPerDay,
+      activeBlocks(state).map((b) => b.slot),
     )
 
     // Kroky z Health se berou jako pravda – uživatel je nezapisoval ručně.

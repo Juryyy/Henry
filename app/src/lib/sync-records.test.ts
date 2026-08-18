@@ -153,12 +153,12 @@ describe('slučování', () => {
 
     applyRecords(s, [
       { kind: 'settings', id: 'steps', updatedAt: POLEDNE, payload: { weeklyTarget: 99_000 } },
-      { kind: 'settings', id: 'exercise', updatedAt: POLEDNE, payload: { minutesPerBlock: 20 } },
+      { kind: 'settings', id: 'exercise', updatedAt: POLEDNE, payload: { level: 3 } },
     ])
 
     // Kroky mám novější lokálně, cvičení starší – projít má jen cvičení.
     expect(s.settings.steps.weeklyTarget).not.toBe(99_000)
-    expect(s.settings.exercise.minutesPerBlock).toBe(20)
+    expect(s.settings.exercise.level).toBe(3)
   })
 
   it('nastavení se doplňuje, ne nahrazuje celé', () => {

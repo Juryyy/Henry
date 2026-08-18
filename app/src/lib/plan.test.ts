@@ -51,8 +51,8 @@ describe('šablony bloků', () => {
     expect(missing).toEqual([])
   })
 
-  it('pokrývají všechny tři sloty', () => {
-    expect(BLOCK_TEMPLATES.map((t) => t.slot)).toEqual([0, 1, 2])
+  it('nabízejí všechna zaměření a každé právě jednou', () => {
+    expect(BLOCK_TEMPLATES.map((t) => t.focus).sort()).toEqual(['core', 'kardio', 'protazeni', 'rozhybani'])
   })
 })
 
@@ -99,7 +99,7 @@ describe('sestavení bloku', () => {
       for (const minutes of [10, 15, 20]) {
         const state = makeState((s) => {
           s.settings.exercise.level = level
-          s.settings.exercise.minutesPerBlock = minutes
+          s.settings.exercise.blocks.forEach((b) => (b.minutes = minutes))
         })
         for (const day of WEEK) {
           for (const slot of SLOTS) {
@@ -116,7 +116,7 @@ describe('sestavení bloku', () => {
     const long = buildBlock(makeState(), DAY, 1)
     const short = buildBlock(
       makeState((s) => {
-        s.settings.exercise.minutesPerBlock = 8
+        s.settings.exercise.blocks.forEach((b) => (b.minutes = 8))
       }),
       DAY,
       1,
@@ -265,7 +265,7 @@ describe('identifikátor plánu', () => {
   it('se změní po úpravě nastavení – rozdělaný blok se tím zneplatní', () => {
     const before = planId(makeState(), DAY, 0)
     expect(planId(makeState((s) => { s.settings.exercise.level = 3 }), DAY, 0)).not.toBe(before)
-    expect(planId(makeState((s) => { s.settings.exercise.minutesPerBlock = 10 }), DAY, 0)).not.toBe(before)
+    expect(planId(makeState((s) => { s.settings.exercise.blocks.forEach((b) => (b.minutes = 10)) }), DAY, 0)).not.toBe(before)
     expect(
       planId(makeState((s) => { s.settings.exercise.excludedExerciseIds = ['sedy-lehy'] }), DAY, 0),
     ).not.toBe(before)
@@ -289,15 +289,25 @@ describe('identifikátor plánu', () => {
 /* ------------------------------------------------------------------ */
 
 describe('denní plán', () => {
-  it('má tolik bloků, kolik jich uživatel cvičí', () => {
+  it('má tolik bloků, kolik jich má uživatel zapnutých', () => {
     expect(buildDay(makeState(), DAY)).toHaveLength(3)
-    expect(buildDay(makeState((s) => { s.settings.exercise.blocksPerDay = 1 }), DAY)).toHaveLength(1)
-    expect(buildDay(makeState((s) => { s.settings.exercise.blocksPerDay = 2 }), DAY)).toHaveLength(2)
+    expect(buildDay(makeState((s) => { s.settings.exercise.blocks[2]!.enabled = false }), DAY)).toHaveLength(2)
   })
 
-  it('nesmyslné nastavení srovná do rozmezí 1–3', () => {
-    expect(buildDay(makeState((s) => { s.settings.exercise.blocksPerDay = 0 }), DAY)).toHaveLength(1)
-    expect(buildDay(makeState((s) => { s.settings.exercise.blocksPerDay = 9 }), DAY)).toHaveLength(3)
+  it('cvičit jen večer je legitimní plán – vypnou se první dva', () => {
+    const state = makeState((s) => {
+      s.settings.exercise.blocks[0]!.enabled = false
+      s.settings.exercise.blocks[1]!.enabled = false
+    })
+    const day = buildDay(state, DAY)
+    expect(day).toHaveLength(1)
+    // Pozice zůstává 2, ne 0: visí na ní zápis odcvičení i odkaz z notifikace.
+    expect(day[0]!.slot).toBe(2)
+  })
+
+  it('když si všechno vypne, zbyde první blok – jinak by dluh nešlo splatit', () => {
+    const state = makeState((s) => s.settings.exercise.blocks.forEach((b) => (b.enabled = false)))
+    expect(buildDay(state, DAY)).toHaveLength(1)
   })
 
   it('bloky jdou po sobě od rána', () => {

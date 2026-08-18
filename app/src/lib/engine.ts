@@ -30,6 +30,7 @@ import {
   type DateKey,
   type WeekKey,
 } from './date'
+import { blocksPerDay } from './plan'
 import { sortTasks } from './tasks'
 import type {
   AppState,
@@ -71,9 +72,9 @@ export function dailyStepTarget(state: AppState, date: DateKey): number {
 
 /** Kolik bloků cvičení se za týden reálně vyžaduje (dny milosti se odečítají). */
 export function weeklyBlockTarget(state: AppState): number {
-  const { blocksPerDay, graceDaysPerWeek } = state.settings.exercise
+  const { graceDaysPerWeek } = state.settings.exercise
   const days = Math.max(1, 7 - Math.max(0, Math.min(6, graceDaysPerWeek)))
-  return blocksPerDay * days
+  return blocksPerDay(state) * days
 }
 
 /**
@@ -93,7 +94,7 @@ export function debtCap(state: AppState, kind: LedgerKind): number {
   // Bloků se dá za týden odcvičit jen omezený počet. Kdyby byl strop vyšší
   // než volné místo mezi týdenním cílem a tímhle maximem, vznikl by dluh,
   // který nejde nikdy splatit – a Henry by donekonečna hlásil nesplněno.
-  const headroom = Math.max(0, state.settings.exercise.blocksPerDay * 7 - weeklyBlockTarget(state))
+  const headroom = Math.max(0, blocksPerDay(state) * 7 - weeklyBlockTarget(state))
   return Math.min(state.settings.exercise.debtCapBlocks, headroom)
 }
 
@@ -658,7 +659,7 @@ export const DAY_SCORE_THRESHOLD = 60
 export function dayStatus(state: AppState, date: DateKey, today: DateKey = todayKey()): DayStatus {
   const day = state.days[date]
   const stepTarget = dailyStepTarget(state, date)
-  const blocksTarget = state.settings.exercise.blocksPerDay
+  const blocksTarget = blocksPerDay(state)
   const steps = day?.steps ?? 0
   const blocksDone = completedBlocks(day)
   const stepPct = stepTarget > 0 ? Math.min(100, (steps / stepTarget) * 100) : 100

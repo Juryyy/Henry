@@ -20,7 +20,7 @@ describe('načtení uloženého stavu', () => {
     expect(state.settings.exercise.level).toBe(3)
     // Doplněné z výchozích hodnot.
     expect(state.settings.steps.goalWeeklyTarget).toBe(49_000)
-    expect(state.settings.exercise.blocksPerDay).toBe(3)
+    expect(state.settings.exercise.blocks.filter((b) => b.enabled)).toHaveLength(3)
     expect(state.weeklyTasks.length).toBeGreaterThan(0)
   })
 

@@ -294,6 +294,7 @@ takže potřebuje vlastní klíč. Zobrazí se jednou a dá se kdykoli zrušit.
 | „Server neodpovídá" | Naběhl kontejner? `docker compose logs --tail 50`. |
 | Přihlásím se, ale notifikace nechodí | Je appka spuštěná z ikony na ploše? V Safari to nepojede. |
 | Test ze serveru projde, naplánované ne | Sedí `TZ_NAME`? A necinkl už dnes limit čtyř notifikací se zvukem? |
+| Připomínka na blok nechodí | Není ten blok vypnutý? Nastavení → Cvičení → Rozvržení dne. Na vypnuté bloky se schválně nepřipomíná. |
 | Konkrétní připomínka přestala chodit | Když ji třikrát po sobě ignoruješ, server ji na dva dny ztlumí. Sama se vrátí. |
 | Face ID appka vůbec nenabízí | Spouštíš ji z ikony nebo aspoň ze Safari? V Chromu na iOS to nejde. A jede to přes HTTPS? Bez něj prohlížeč klíč nevyrobí. |
 | Face ID přestalo fungovat po změně adresy | Klíč je svázaný s doménou. Přihlas se heslem a přidej si klíč znovu (Nastavení → Účet). |

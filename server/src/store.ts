@@ -59,8 +59,14 @@ export interface StateSnapshot {
 export interface ScheduleConfig {
   enabled: boolean
   timezone: string
-  /** Kolik bloků uživatel denně cvičí – tolik připomínek smí odejít. */
-  blocksPerDay: number
+  /**
+   * Které bloky uživatel opravdu cvičí (pozice 0–2). Jen na ty se
+   * připomíná. Schválně pozice, ne počet: kdo cvičí jen večer, nesmí
+   * dostat ranní připomínku.
+   */
+  activeSlots: number[]
+  /** Vlastní názvy bloků. Prázdný = použije se hláška podle denní doby. */
+  blockTitles: string[]
   blockTimes: string[]
   stepCheckTime: string
   stepCheckThreshold: number
@@ -81,7 +87,8 @@ export interface StepEntry {
 export const DEFAULT_SCHEDULE: ScheduleConfig = {
   enabled: true,
   timezone: config.timezone,
-  blocksPerDay: 3,
+  activeSlots: [0, 1, 2],
+  blockTitles: [],
   blockTimes: ['07:15', '12:30', '20:00'],
   stepCheckTime: '17:45',
   stepCheckThreshold: 60,
@@ -110,8 +117,18 @@ export function getSchedule(userId: string): ScheduleConfig {
 
 export function setSchedule(userId: string, patch: Partial<ScheduleConfig>): ScheduleConfig {
   const next = { ...getSchedule(userId), ...patch }
-  const blocks = Number(next.blocksPerDay)
-  next.blocksPerDay = Math.max(1, Math.min(3, Math.round(Number.isFinite(blocks) ? blocks : 3)))
+
+  // Pozice bloků chodí z internetu, takže se čistí: jen celá čísla 0–2,
+  // bez duplicit a nikdy prázdné – prázdný seznam by umlčel všechny
+  // připomínky na cvičení a vypadalo by to jako porucha serveru.
+  const slots = Array.isArray(next.activeSlots) ? next.activeSlots : []
+  const clean = [...new Set(slots.map((n) => Math.round(Number(n))))]
+    .filter((n) => Number.isInteger(n) && n >= 0 && n <= 2)
+    .sort((a, b) => a - b)
+  next.activeSlots = clean.length ? clean : [...DEFAULT_SCHEDULE.activeSlots]
+
+  const titles = Array.isArray(next.blockTitles) ? next.blockTitles : []
+  next.blockTitles = titles.slice(0, 3).map((t) => (typeof t === 'string' ? t.slice(0, 40) : ''))
   getDb()
     .prepare(
       'INSERT INTO schedules (user_id, payload) VALUES (?, ?) ON CONFLICT (user_id) DO UPDATE SET payload = excluded.payload',

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { activeBlocks } from '@/lib/plan'
 import LineChart from '@/components/LineChart.vue'
 import { formatDayShort, relativeDayLabel } from '@/lib/date'
 import { dec, num, parseNumber } from '@/lib/format'
@@ -83,7 +84,12 @@ const totalSteps = computed(() => Object.values(state.days).reduce((sum, d) => s
 const totalBlocks = computed(() =>
   Object.values(state.days).reduce((sum, d) => sum + d.blocks.filter((b) => b.completedAt).length, 0),
 )
-const totalMinutes = computed(() => totalBlocks.value * state.settings.exercise.minutesPerBlock)
+// Bloky můžou být různě dlouhé, takže se počítá průměr toho, co je zapnuté.
+const averageBlockMinutes = computed(() => {
+  const blocks = activeBlocks(state)
+  return blocks.reduce((sum, b) => sum + b.minutes, 0) / blocks.length
+})
+const totalMinutes = computed(() => Math.round(totalBlocks.value * averageBlockMinutes.value))
 
 /* Milníky --------------------------------------------------------------- */
 

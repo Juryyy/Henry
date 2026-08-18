@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { blocksPerDay } from './plan'
 import {
   carryInto,
   closeDueWeeks,
@@ -433,7 +434,7 @@ describe('dluh v blocích', () => {
     const s = makeState()
     for (let grace = 0; grace <= 3; grace++) {
       s.settings.exercise.graceDaysPerWeek = grace
-      const max = s.settings.exercise.blocksPerDay * 7
+      const max = blocksPerDay(s) * 7
       expect(weeklyBlockTarget(s) + debtCap(s, 'blocks')).toBeLessThanOrEqual(max)
     }
   })

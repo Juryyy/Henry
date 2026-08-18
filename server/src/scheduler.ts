@@ -146,10 +146,13 @@ function buildSlots(
   const slots: Slot[] = []
   const seed = `${today}-`
 
-  // Připomínají se jen bloky, které uživatel opravdu cvičí. Kdyby si nastavil
-  // dva bloky denně, třetí připomínka by ho posílala na něco, co v appce není.
-  const blocks = Math.max(1, Math.min(schedule.blockTimes.length, schedule.blocksPerDay || 3))
-  schedule.blockTimes.slice(0, blocks).forEach((time, index) => {
+  // Připomínají se jen bloky, které uživatel opravdu cvičí. Kdyby si vypnul
+  // ranní blok, ranní připomínka by ho posílala na něco, co v appce není.
+  // Pole časů se schválně nezkracuje – index je pozice bloku a míří na něj
+  // odkaz z notifikace.
+  const active = new Set(schedule.activeSlots ?? [0, 1, 2])
+  schedule.blockTimes.forEach((time, index) => {
+    if (!active.has(index)) return
     const minutes = parseClock(time)
     if (minutes === null) return
     slots.push({
@@ -163,7 +166,7 @@ function buildSlots(
         const msg =
           index === 0 && weekday === 0
             ? mondayMessage(snapshot, `${seed}monday`)
-            : blockMessage(index, snapshot, schedule.tone, `${seed}b${index}`)
+            : blockMessage(index, snapshot, schedule.tone, `${seed}b${index}`, schedule.blockTitles?.[index])
         return { ...msg, url: `#/cviceni/${index}`, tag: `block-${index}` }
       },
     })

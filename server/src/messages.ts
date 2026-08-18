@@ -230,11 +230,14 @@ export function blockMessage(
   snapshot: StateSnapshot | null,
   tone: Tone,
   seed: string,
+  /** Vlastní název bloku z appky. Kdo si blok pojmenoval, chce ho i v notifikaci. */
+  customTitle?: string,
 ): Message {
   const vars = varsFrom(snapshot)
   const titles = BLOCK_TITLES[slot] ?? BLOCK_TITLES[1]
+  const own = customTitle?.trim()
   return {
-    title: pick(titles[tone] ?? titles.coach, `${seed}t`),
+    title: own || pick(titles[tone] ?? titles.coach, `${seed}t`),
     body: render(pick(BLOCK_BODIES[slot] ?? BLOCK_BODIES[1], `${seed}b`), vars),
   }
 }

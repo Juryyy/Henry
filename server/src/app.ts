@@ -47,6 +47,17 @@ import {
   verifyPassword,
 } from './users.js'
 import {
+  countPasskeys,
+  finishPasskeyLogin,
+  finishPasskeyRegistration,
+  listPasskeys,
+  relyingParty,
+  revokePasskey,
+  startPasskeyLogin,
+  startPasskeyRegistration,
+  type RelyingParty,
+} from './passkeys.js'
+import {
   currentRev,
   listVersions,
   pullRecords,
@@ -97,6 +108,14 @@ const anyJson = express.json({ limit: '256kb', type: () => true })
 
 /** Přihlašování a registrace se dají zkoušet hrubou silou – tady se to zarazí. */
 const authLimit = rateLimit({ max: 10, windowMs: 10 * 60 * 1000 })
+
+/**
+ * Výdej výzvy pro passkey je jiný případ: nabídka klíče v poli pro e-mail se
+ * spouští při každém otevření přihlašovací obrazovky, takže deset pokusů by
+ * došlo při pár reloadech. Hádat se tu nedá nic – výzva je náhodná a nic
+ * neprozrazuje – limit je proto jen proti zahlcování.
+ */
+const challengeLimit = rateLimit({ max: 60, windowMs: 10 * 60 * 1000 })
 
 function str(value: unknown, max = 200): string {
   return typeof value === 'string' ? value.slice(0, max) : ''
@@ -206,7 +225,11 @@ app.post('/api/auth/logout', (req: Request, res: Response) => {
 })
 
 app.get('/api/auth/me', requireAuth, (req: Request, res: Response) => {
-  res.json({ user: req.user, subscriptions: countSubscriptions(req.user!.id) })
+  res.json({
+    user: req.user,
+    subscriptions: countSubscriptions(req.user!.id),
+    passkeys: countPasskeys(req.user!.id),
+  })
 })
 
 app.post('/api/auth/password', requireAuth, json, async (req: Request, res: Response) => {
@@ -252,6 +275,97 @@ app.post('/api/auth/sessions/revoke', requireAuth, json, (req: Request, res: Res
     return
   }
   res.json({ ok: revokeSessionByPrefix(req.user!.id, id) })
+})
+
+/* ------------------------------------------------------------------ */
+/*  Passkeys (Face ID / Touch ID / Windows Hello)                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Doména, pro kterou klíč platí, se bere z adresy, na kterou požadavek přišel.
+ * Za tunelem (Tailscale, Cloudflare) je ta správná v `X-Forwarded-*`, což
+ * `trust proxy` výš už vyřešil.
+ */
+function rpFor(req: Request, res: Response): RelyingParty | null {
+  const rp = relyingParty({ protocol: req.protocol, host: req.get('host') })
+  if (!rp) {
+    res.status(400).json({ error: 'Nepodařilo se zjistit adresu serveru.' })
+    return null
+  }
+  return rp
+}
+
+app.post('/api/auth/passkey/register/options', requireAuth, async (req: Request, res: Response) => {
+  const rp = rpFor(req, res)
+  if (!rp) return
+  res.json(await startPasskeyRegistration(req.user!, rp))
+})
+
+app.post('/api/auth/passkey/register/verify', requireAuth, json, async (req: Request, res: Response) => {
+  const rp = rpFor(req, res)
+  if (!rp) return
+  const body = (req.body ?? {}) as Record<string, unknown>
+  const challengeId = str(body.challengeId, 100)
+  if (!challengeId || !body.response) {
+    res.status(400).json({ error: 'Chybí odpověď z prohlížeče.' })
+    return
+  }
+
+  const label = str(body.label, 60) || deviceLabel(req)
+  const result = await finishPasskeyRegistration(req.user!, challengeId, body.response as never, rp, label)
+  if (!result.ok) {
+    res.status(400).json({ error: result.error })
+    return
+  }
+  addLog(req.user!.id, 'auth', `přidán klíč pro přihlášení (${label})`)
+  res.json({ ok: true, passkey: result.passkey })
+})
+
+/**
+ * Výzva k přihlášení je veřejná – z ní se nedá nic zjistit, protože
+ * neobsahuje seznam klíčů ani e-mail. Limit je tu proti zahlcování.
+ */
+app.post('/api/auth/passkey/login/options', challengeLimit, async (req: Request, res: Response) => {
+  const rp = rpFor(req, res)
+  if (!rp) return
+  res.json(await startPasskeyLogin(rp))
+})
+
+app.post('/api/auth/passkey/login/verify', authLimit, json, async (req: Request, res: Response) => {
+  const rp = rpFor(req, res)
+  if (!rp) return
+  const body = (req.body ?? {}) as Record<string, unknown>
+  const challengeId = str(body.challengeId, 100)
+  if (!challengeId || !body.response) {
+    res.status(400).json({ error: 'Chybí odpověď z prohlížeče.' })
+    return
+  }
+
+  const result = await finishPasskeyLogin(challengeId, body.response as never, rp)
+  if (!result.ok || !result.user) {
+    res.status(401).json({ error: result.error ?? 'Přihlášení se nepovedlo.' })
+    return
+  }
+
+  const token = createSession(result.user.id, deviceLabel(req))
+  setSessionCookie(res, token)
+  clearRateLimit(req)
+  res.json({ user: result.user })
+})
+
+app.get('/api/auth/passkeys', requireAuth, (req: Request, res: Response) => {
+  res.json({ passkeys: listPasskeys(req.user!.id) })
+})
+
+app.post('/api/auth/passkeys/revoke', requireAuth, json, (req: Request, res: Response) => {
+  const id = str((req.body as Record<string, unknown>)?.id, 500)
+  if (!id) {
+    res.status(400).json({ error: 'Chybí id klíče.' })
+    return
+  }
+  const ok = revokePasskey(req.user!.id, id)
+  if (ok) addLog(req.user!.id, 'auth', 'odebrán klíč pro přihlášení')
+  res.json({ ok })
 })
 
 /* ------------------------------------------------------------------ */

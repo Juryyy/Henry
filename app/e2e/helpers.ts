@@ -58,6 +58,17 @@ export async function stubServer(context: BrowserContext, signedIn = true): Prom
     if (url.includes('/api/state')) return json({ rev: 0, applied: 0, skipped: 0, records: [], versions: [], stats: {} })
     if (url.includes('/api/steps')) return json({ steps: [] })
     if (url.includes('/api/auth/sessions')) return json({ sessions: [] })
+    // Výzva pro Face ID: tvarem odpovídá serveru, ale přihlásit se s ní nedá.
+    if (url.includes('/api/auth/passkey/login/options')) {
+      return json({
+        options: { challenge: 'dGVzdA', rpId: 'localhost', allowCredentials: [], userVerification: 'preferred' },
+        challengeId: 'vyzva',
+      })
+    }
+    if (url.includes('/api/auth/passkey/login/verify')) {
+      return json({ error: 'Tenhle klíč tu není zaregistrovaný.' }, 401)
+    }
+    if (url.includes('/api/auth/passkeys')) return json({ passkeys: [] })
     if (url.includes('/api/auth/invite')) return json({ invites: [], code: 'POZVANKA' })
     if (url.includes('/api/tokens')) return json({ tokens: [] })
     return json({ ok: true, serverSteps: null })

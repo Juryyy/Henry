@@ -18,6 +18,7 @@
     "screenshots": "playwright test --config playwright.screenshots.config.ts"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0",
     "vue": "^3.5.41",
     "vue-router": "^4.5.1"
   },

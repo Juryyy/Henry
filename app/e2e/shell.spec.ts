@@ -139,7 +139,7 @@ test.describe('nastavení', () => {
     await ready(page)
 
     await page.getByPlaceholder('Nový úkol…').fill('Bazén')
-    await page.getByRole('button', { name: 'Přidat' }).click()
+    await page.getByRole('button', { name: 'Přidat', exact: true }).click()
     await expect.poll(async () =>
       (await readState(page)).weeklyTasks.some((t: any) => t.title === 'Bazén'),
     ).toBe(true)

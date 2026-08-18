@@ -5,20 +5,24 @@ import {
   checkHealth,
   createInvite,
   createToken,
+  fetchPasskeys,
   fetchSessions,
   fetchTokens,
   fetchVersions,
   restoreVersion,
   revokeOtherSessions,
+  revokePasskey,
   revokeSession,
   revokeToken,
   sendTestPush,
   setAccountName,
   type ApiTokenInfo,
   type DeviceSession,
+  type PasskeyInfo,
   type StateVersion,
 } from '@/lib/api'
-import { account, signOut } from '@/stores/auth'
+import { account, passkeysAvailable, signOut } from '@/stores/auth'
+import { addPasskey, PasskeyCancelled, platformPasskeyAvailable } from '@/lib/passkey'
 import { dec, num, parseNumber, plural } from '@/lib/format'
 import { EXERCISES } from '@/data/exercises'
 import { debtCap, weeklyBlockTarget } from '@/lib/engine'
@@ -119,6 +123,7 @@ const pushBusy = ref(false)
 
 onMounted(async () => {
   pushActive.value = await hasPushSubscription()
+  hasPlatformAuthenticator.value = await platformPasskeyAvailable()
   void loadAccountDetails()
 })
 
@@ -179,15 +184,61 @@ const tokens = ref<ApiTokenInfo[]>([])
 const newToken = ref('')
 const invite = ref('')
 
+/* Face ID / Touch ID */
+const passkeys = ref<PasskeyInfo[]>([])
+const passkeyMessage = ref('')
+const passkeyBusy = ref(false)
+/** Má tohle zařízení vlastní biometriku? Bez ní by nabídka jen mátla. */
+const hasPlatformAuthenticator = ref(false)
+
 async function loadAccountDetails(): Promise<void> {
   try {
     // `?? []` schválně: neočekávaná odpověď (proxy, přihlášení vypršelo)
     // nesmí shodit celou obrazovku nastavení kvůli jednomu seznamu.
     sessions.value = (await fetchSessions()).sessions ?? []
     tokens.value = (await fetchTokens()).tokens ?? []
+    passkeys.value = (await fetchPasskeys()).passkeys ?? []
   } catch (err) {
     accountMessage.value = (err as Error).message
   }
+}
+
+/**
+ * Přidá tomuhle zařízení klíč pro přihlášení. Popisek se bere z účtu
+ * a zařízení, ať se v seznamu dá poznat, který klíč je který.
+ */
+async function addFaceId(): Promise<void> {
+  passkeyBusy.value = true
+  passkeyMessage.value = ''
+  try {
+    const passkey = await addPasskey(deviceName())
+    passkeyMessage.value = passkey.backedUp
+      ? 'Hotovo. Klíč je zálohovaný, takže ho najdeš i na dalších svých zařízeních.'
+      : 'Hotovo. Klíč platí jen pro tohle zařízení.'
+    await loadAccountDetails()
+  } catch (err) {
+    // Zavřené okno s Face ID není chyba – člověk si to jen rozmyslel.
+    if (!(err instanceof PasskeyCancelled)) passkeyMessage.value = (err as Error).message
+  } finally {
+    passkeyBusy.value = false
+  }
+}
+
+async function dropPasskey(id: string): Promise<void> {
+  await revokePasskey(id)
+  passkeyMessage.value = 'Klíč odebraný.'
+  await loadAccountDetails()
+}
+
+/** Hrubý odhad zařízení – slouží jen k rozlišení řádků v seznamu. */
+function deviceName(): string {
+  const ua = navigator.userAgent
+  if (/iPhone/i.test(ua)) return 'iPhone'
+  if (/iPad/i.test(ua)) return 'iPad'
+  if (/Android/i.test(ua)) return 'Android'
+  if (/Macintosh/i.test(ua)) return 'Mac'
+  if (/Windows/i.test(ua)) return 'Windows'
+  return 'Tohle zařízení'
 }
 
 async function doChangePassword(): Promise<void> {
@@ -653,6 +704,56 @@ const confirmReset = ref(false)
           <p class="small">
             Přihlášený jako <span class="strong">{{ account?.email }}</span>
           </p>
+
+          <details :open="passkeys.length === 0">
+            <summary class="small muted" style="cursor: pointer">
+              Přihlášení přes Face ID ({{ passkeys.length }})
+            </summary>
+            <div class="stack-sm" style="margin-top: 8px">
+              <p class="tiny faint">
+                Klíč zůstane v telefonu (Secure Enclave) a server dostane jen jeho veřejnou
+                polovinu – není co ukrást ani co zapomenout. Heslo si nech: je to záchrana pro
+                nové zařízení a pro případ, že o telefon přijdeš.
+              </p>
+              <p v-if="!passkeysAvailable" class="tiny c-danger">
+                Tenhle prohlížeč passkeys neumí. Na iPhonu to jde v Safari a v appce spuštěné
+                z plochy, ne v Chromu.
+              </p>
+              <p v-else-if="!hasPlatformAuthenticator" class="tiny faint">
+                Tohle zařízení nemá vlastní biometriku – klíč půjde vyrobit jen na bezpečnostním
+                klíči nebo přes telefon.
+              </p>
+              <button
+                class="btn btn-sm btn-primary"
+                :disabled="!passkeysAvailable || passkeyBusy"
+                @click="addFaceId"
+              >
+                {{ passkeyBusy ? 'Čekám na ověření…' : 'Nastavit na tomhle zařízení' }}
+              </button>
+              <p v-if="passkeyMessage" class="tiny muted">{{ passkeyMessage }}</p>
+              <ul v-if="passkeys.length" class="list-reset stack-sm">
+                <li v-for="k in passkeys" :key="k.id" class="row-between version">
+                  <span class="small">
+                    {{ k.label }}
+                    <span class="tiny faint">
+                      ·
+                      {{
+                        k.lastUsedAt
+                          ? `naposledy ${new Date(k.lastUsedAt).toLocaleDateString('cs-CZ')}`
+                          : 'zatím nepoužitý'
+                      }}
+                      <template v-if="k.backedUp">· zálohovaný</template>
+                    </span>
+                  </span>
+                  <button class="btn btn-sm btn-ghost" @click="dropPasskey(k.id)">Odebrat</button>
+                </li>
+              </ul>
+              <p class="tiny faint">
+                Klíč platí pro adresu, na které Henry běží. Když server přestěhuješ na jinou
+                doménu, budeš si ho tam nastavit znovu.
+              </p>
+            </div>
+          </details>
 
           <details>
             <summary class="small muted" style="cursor: pointer">Změnit heslo</summary>

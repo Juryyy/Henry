@@ -4,7 +4,7 @@ Osobní PWA na to, aby ses hýbal. Kroky s týdenním dluhem, třikrát denně p
 minut cvičení, týdenní úkoly a notifikace, které chodí i když je appka zavřená.
 
 Nasadíš si ji na svůj server (Raspberry, VPS) – appka i API běží z jedné adresy,
-data leží u tebe a přístup je na účet a heslo.
+data leží u tebe a dovnitř se dostaneš přes Face ID.
 
 Zaměření: **zpevnit střed těla, zhubnout, dostat se rukama na zem.**
 
@@ -77,15 +77,23 @@ Nebo si je zapíšeš ručně, appka funguje i tak.
 
 **Pokrok** – váha, obvod pasu, kolik centimetrů ti chybí na zem, výdrž v prkně.
 
-**Účet a synchronizace mezi zařízeními.** Přihlásíš se e-mailem a heslem;
-data se drží na serveru, takže výměnu telefonu přežijí a na notebooku vidíš
-totéž. Slučuje se **po záznamech**, ne přes celý stav: ranní odškrtnutý blok
-z telefonu a odpolední zápis kroků z notebooku přežijí oba. Server si po každé
-synchronizaci odkládá stav stranou, takže jde vrátit i to, co si sám rozbiješ.
+**Účet a synchronizace mezi zařízeními.** Přihlašuješ se **Face ID / Touch ID**
+(heslo zůstává jako záchrana); data se drží na serveru, takže výměnu telefonu
+přežijí a na notebooku vidíš totéž. Slučuje se **po záznamech**, ne přes celý
+stav: ranní odškrtnutý blok z telefonu a odpolední zápis kroků z notebooku
+přežijí oba. Server si po každé synchronizaci odkládá stav stranou, takže jde
+vrátit i to, co si sám rozbiješ.
 
 První účet si založíš při prvním otevření a tím se registrace zavře – kdo má
 přijít potom, dostane od tebe pozvánku. V nastavení vidíš přihlášená zařízení
-a kterékoli z nich můžeš odhlásit.
+i nastavené klíče a kterékoli z nich můžeš odebrat.
+
+**Face ID místo hesla.** Účet se zakládá e-mailem a heslem, ale hned potom si
+v nastavení zapneš klíč (passkey) a dál se přihlašuješ obličejem nebo otiskem –
+i v appce spuštěné z plochy. Soukromý klíč nikdy neopustí telefon, server má
+jen tu veřejnou polovinu, takže z ukradené databáze se přihlásit nedá. Žádný
+Google ani Apple v tom nefiguruje: nikdo třetí se nedozví, kdy se do appky
+díváš, a nemá jak ti přístup odstřihnout.
 
 ---
 
@@ -145,19 +153,19 @@ dokud tam žádný není.
 ```bash
 cd app
 npm test          # jednotkové testy výpočtů, plánu a slučování (112)
-npm run e2e       # e2e testy v prohlížeči (43) – projdou appku jako uživatel
+npm run e2e       # e2e testy v prohlížeči (48) – projdou appku jako uživatel
 npm run typecheck
 npm run build
 npm run screenshots  # přegeneruje obrázky v docs/screenshots
 
 cd ../server
-npm test          # účty, HTTP rozhraní, plánovač, slučování dat (124)
+npm test          # účty, klíče, HTTP rozhraní, plánovač, slučování dat (150)
 npm run typecheck
 npm run build
 ```
 
 E2E testy jedou proti produkčnímu buildu v mobilním rozlišení a kontrolují
-celé toky: přihlášení, úvodního průvodce, zápis kroků, průchod blokem cvičení
+celé toky: přihlášení heslem i klíčem, úvodního průvodce, zápis kroků, průchod blokem cvičení
 včetně odpočtu, přenos dluhu, bankrot, měření, milníky, synchronizaci mezi
 zařízeními i registraci service workeru. Běží i v CI
 (`.github/workflows/ci.yml`).
@@ -191,8 +199,9 @@ i VPS, včetně tunelů a řešení nejčastějších problémů.
    PWA tak, aby fungovaly notifikace).
 2. Sdílet → **Přidat na plochu**.
 3. Spusť appku **z ikony**, ne ze Safari, a přihlas se.
-4. Nastavení → Notifikace → **Zapnout notifikace**.
-5. *Test ze serveru* – za chvíli to musí cinknout.
+4. Nastavení → Účet → **Přihlášení přes Face ID** → *Nastavit na tomhle zařízení*.
+5. Nastavení → Notifikace → **Zapnout notifikace**.
+6. *Test ze serveru* – za chvíli to musí cinknout.
 
 Bez kroku 2 a 3 push nefunguje a nejde to obejít: v Safari na kartě objekt
 `Notification` na iOS vůbec neexistuje.
@@ -240,8 +249,13 @@ to a běž za fyzioterapeutem.
 
 ## Poznámky k bezpečnosti
 
+- **Face ID (passkeys)** je hlavní cesta dovnitř. Server drží jen veřejný klíč;
+  přihlášení je podpis náhodné výzvy, takže po drátě neletí nic, co by šlo
+  odchytit a přehrát. Klíč je svázaný s doménou, takže ho nejde použít na
+  podvržené stránce. Výzva platí pět minut a jen na jedno použití.
 - **Hesla** se hašují scryptem s náhodnou solí. V databázi není nic, z čeho by
-  šlo heslo získat.
+  šlo heslo získat. Heslo zůstává jako záchrana pro nové zařízení – klíč je
+  vázaný na doménu a na telefon.
 - **Sezení** žijí v `httpOnly` cookie – žádný skript se k nim nedostane –
   a v databázi jen jako otisk. `SameSite=Lax` znamená, že cizí web cookie
   k požadavku nepřipojí; to je zároveň obrana proti CSRF.
@@ -253,6 +267,9 @@ to a běž za fyzioterapeutem.
   se heslo nedalo zkoušet hrubou silou.
 - **Token pro Zkratku** je vázaný na účet, ukáže se jednou, ukládá se jen jako
   otisk a dá se zrušit bez změny hesla.
+- **Klíč nejde nastavit cizímu účtu**: výzva se vydává přihlášenému a ověřuje
+  se, že se vrátila od téhož. Klíče jednoho účtu nejsou vidět ani odebratelné
+  z jiného.
 - Ověření běží **před** parsováním těla požadavku, takže nepřihlášený požadavek
   nedonutí server alokovat paměť.
 - Účty jsou od sebe oddělené na úrovni databáze a hlídají to testy – „uživatel

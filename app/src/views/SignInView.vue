@@ -1,12 +1,23 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { registrationOpen, serverReachable, signIn, signUp } from '@/stores/auth'
+import { computed, onMounted, ref, watch } from 'vue'
+import {
+  passkeysAvailable,
+  registrationOpen,
+  serverReachable,
+  signIn,
+  signInWithFaceId,
+  signUp,
+} from '@/stores/auth'
+import { autofillAvailable, PasskeyCancelled } from '@/lib/passkey'
 
 /**
  * Přihlášení a založení účtu na jedné obrazovce.
  *
  * Registrace je otevřená jen do prvního účtu – ten si zakládá majitel serveru
  * hned po nasazení. Kdo přijde potom, potřebuje pozvánku.
+ *
+ * Hlavní cesta dovnitř je Face ID / Touch ID. Heslo zůstává jako druhá cesta:
+ * účet se jím zakládá a je to záchrana pro nové zařízení nebo ztracený telefon.
  */
 const mode = ref<'login' | 'register'>(registrationOpen.value ? 'register' : 'login')
 
@@ -16,15 +27,19 @@ const name = ref('')
 const invite = ref('')
 
 const busy = ref(false)
+const passkeyBusy = ref(false)
 const error = ref('')
 
 const registering = computed(() => mode.value === 'register')
 const needsInvite = computed(() => registering.value && !registrationOpen.value)
 
+/** Klíčem se dá přihlásit, ne založit účet – ten musí nejdřív vzniknout. */
+const showPasskey = computed(() => passkeysAvailable && !registering.value)
+
 const canSubmit = computed(() => {
   if (!email.value.includes('@') || password.value.length < (registering.value ? 10 : 1)) return false
   if (needsInvite.value && !invite.value.trim()) return false
-  return !busy.value
+  return !busy.value && !passkeyBusy.value
 })
 
 async function submit(): Promise<void> {
@@ -48,6 +63,43 @@ async function submit(): Promise<void> {
     busy.value = false
   }
 }
+
+async function faceId(): Promise<void> {
+  if (passkeyBusy.value) return
+  passkeyBusy.value = true
+  error.value = ''
+  try {
+    await signInWithFaceId()
+  } catch (err) {
+    // Zavřené okno s Face ID není chyba – člověk si to jen rozmyslel.
+    if (!(err instanceof PasskeyCancelled)) error.value = (err as Error).message
+  } finally {
+    passkeyBusy.value = false
+  }
+}
+
+/**
+ * Nabídka klíče přímo v poli pro e-mail (conditional UI). Běží na pozadí
+ * a čeká, jestli si člověk vybere; když ne, tiše skončí. Prohlížeč to musí
+ * umět, jinak se to ani nespouští.
+ */
+let autofillStarted = false
+
+async function startAutofill(): Promise<void> {
+  if (autofillStarted || !passkeysAvailable || registering.value) return
+  if (!(await autofillAvailable())) return
+  autofillStarted = true
+  try {
+    await signInWithFaceId({ autofill: true })
+  } catch {
+    // Zrušení i přepnutí na tlačítko sem spadnou stejně – oboje je v pořádku.
+  }
+}
+
+onMounted(startAutofill)
+watch(registering, (yes) => {
+  if (!yes) void startAutofill()
+})
 
 function switchMode(): void {
   mode.value = registering.value ? 'login' : 'register'
@@ -76,9 +128,24 @@ function switchMode(): void {
           {{ registering ? (registrationOpen ? 'Založ si účet' : 'Účet na pozvánku') : 'Přihlášení' }}
         </div>
 
+        <template v-if="showPasskey">
+          <button
+            class="btn btn-primary btn-block btn-lg"
+            type="button"
+            :disabled="passkeyBusy"
+            @click="faceId"
+          >
+            {{ passkeyBusy ? 'Ověřuju…' : 'Přihlásit se přes Face ID' }}
+          </button>
+          <p class="tiny faint center" style="margin: 0">
+            Funguje, jen když sis na tomhle zařízení klíč už nastavil.
+          </p>
+          <div class="divider"><span class="tiny faint">nebo heslem</span></div>
+        </template>
+
         <p v-if="registering && registrationOpen" class="tiny faint">
           Tenhle server je čerstvě nasazený, takže první účet je tvůj. Další lidi pak pouštíš dál
-          pozvánkou z nastavení.
+          pozvánkou z nastavení. Face ID si zapneš hned potom v nastavení.
         </p>
 
         <input
@@ -86,7 +153,7 @@ function switchMode(): void {
           type="email"
           inputmode="email"
           placeholder="E-mail"
-          autocomplete="username"
+          :autocomplete="registering ? 'username' : 'username webauthn'"
           autocapitalize="off"
           autocorrect="off"
           required
@@ -113,7 +180,12 @@ function switchMode(): void {
 
         <p v-if="error" class="small c-danger">{{ error }}</p>
 
-        <button class="btn btn-primary btn-block btn-lg" type="submit" :disabled="!canSubmit">
+        <button
+          class="btn btn-block btn-lg"
+          :class="showPasskey ? 'btn-ghost' : 'btn-primary'"
+          type="submit"
+          :disabled="!canSubmit"
+        >
           {{ busy ? 'Moment…' : registering ? 'Založit účet' : 'Přihlásit se' }}
         </button>
 
@@ -164,5 +236,21 @@ function switchMode(): void {
 .card.warn {
   border-color: color-mix(in srgb, var(--warn) 45%, transparent);
   background: var(--warn-soft);
+}
+
+/* Čára s popiskem uprostřed – oddělí klíč od hesla. */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
 }
 </style>

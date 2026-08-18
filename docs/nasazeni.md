@@ -130,10 +130,18 @@ Na iPhonu:
    aby fungovaly notifikace).
 2. Sdílet → **Přidat na plochu**.
 3. Spusť appku **z ikony**, ne ze Safari, a přihlas se.
-4. Nastavení → Notifikace → **Zapnout notifikace** → **Test ze serveru**.
+4. Nastavení → Účet → **Přihlášení přes Face ID** → *Nastavit na tomhle
+   zařízení*. Od téhle chvíle se přihlašuješ obličejem a heslo potřebuješ
+   jen jako záchranu.
+5. Nastavení → Notifikace → **Zapnout notifikace** → **Test ze serveru**.
 
 Notifikace na iPhonu fungují **jen** z ikony na ploše. V Safari na kartě objekt
 `Notification` na iOS vůbec neexistuje.
+
+> **Klíč pro Face ID platí pro adresu, na které Henry běží.** Když server
+> přestěhuješ z `…ts.net` na vlastní doménu, klíče na té staré zůstanou a na
+> nové si je nastavíš znovu (heslem se přihlásíš a přidáš klíč). Nic se tím
+> neztratí, jen na to nesmíš zapomenout – proto to heslo.
 
 ---
 
@@ -185,4 +193,6 @@ takže potřebuje vlastní klíč. Zobrazí se jednou a dá se kdykoli zrušit.
 | Přihlásím se, ale notifikace nechodí | Je appka spuštěná z ikony na ploše? V Safari to nepojede. |
 | Test ze serveru projde, naplánované ne | Sedí `TZ_NAME`? A necinkl už dnes limit čtyř notifikací se zvukem? |
 | Konkrétní připomínka přestala chodit | Když ji třikrát po sobě ignoruješ, server ji na dva dny ztlumí. Sama se vrátí. |
-| Zapomenuté heslo | Účet je jen v tvé databázi. Nejrychlejší cesta: smazat řádek v tabulce `users` (`sqlite3 data/henry.sqlite`) a založit účet znovu – data zůstanou, jen se k nim bude muset nový účet nasynchronizovat z telefonu. |
+| Face ID appka vůbec nenabízí | Spouštíš ji z ikony nebo aspoň ze Safari? V Chromu na iOS to nejde. A jede to přes HTTPS? Bez něj prohlížeč klíč nevyrobí. |
+| Face ID přestalo fungovat po změně adresy | Klíč je svázaný s doménou. Přihlas se heslem a přidej si klíč znovu (Nastavení → Účet). |
+| Zapomenuté heslo | Účet je jen v tvé databázi. Nejrychlejší cesta: smazat řádek v tabulce `users` (`sqlite3 data/henry.sqlite`) a založit účet znovu – data zůstanou, jen se k nim bude muset nový účet nasynchronizovat z telefonu. Klíče pro Face ID zmizí s ním, nastavíš je znovu. |

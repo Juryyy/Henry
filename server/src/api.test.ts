@@ -350,6 +350,58 @@ describe('data', () => {
   })
 })
 
+describe('passkeys přes HTTP', () => {
+  it('výzvu k přidání klíče nedostane nepřihlášený', async () => {
+    await register('ja@example.com')
+    const res = await client().call('/api/auth/passkey/register/options', { method: 'POST' })
+    expect(res.status).toBe(401)
+  })
+
+  it('doména klíče se vezme z adresy požadavku, ne z konfigurace', async () => {
+    const { c } = await register('ja@example.com')
+    const data = await c.json('/api/auth/passkey/register/options', { method: 'POST' })
+
+    // Testovací server běží na 127.0.0.1, takže tam musí být přesně to.
+    expect(data.options.rp.id).toBe('127.0.0.1')
+    expect(data.options.challenge).toMatch(/^[A-Za-z0-9_-]+$/)
+    expect(data.challengeId).toBeTruthy()
+  })
+
+  it('výzvu k přihlášení dostane i nepřihlášený, ale nic se z ní nedozví', async () => {
+    await register('ja@example.com')
+    const data = await client().json('/api/auth/passkey/login/options', { method: 'POST' })
+
+    expect(data.challengeId).toBeTruthy()
+    // Žádný seznam klíčů – jinak by šlo zjistit, kdo tu má účet.
+    expect(data.options.allowCredentials ?? []).toHaveLength(0)
+    expect(JSON.stringify(data)).not.toContain('ja@example.com')
+  })
+
+  it('nesmysl místo odpovědi z prohlížeče je 400, ne pád serveru', async () => {
+    const { c } = await register('ja@example.com')
+    const res = await c.call('/api/auth/passkey/register/verify', { body: { challengeId: 'nic' } })
+    expect(res.status).toBe(400)
+  })
+
+  it('vymyšlené přihlášení klíčem je 401 a neodhlásí přihlášeného', async () => {
+    const { c } = await register('ja@example.com')
+    const { challengeId } = await c.json('/api/auth/passkey/login/options', { method: 'POST' })
+
+    const res = await c.call('/api/auth/passkey/login/verify', {
+      body: { challengeId, response: { id: 'neexistuje', response: {} } },
+    })
+    expect(res.status).toBe(401)
+    // Cookie musí zůstat – neúspěšný pokus o klíč není vypršelé sezení.
+    expect((await c.call('/api/auth/me')).status).toBe(200)
+  })
+
+  it('/api/auth/me hlásí, kolik klíčů účet má', async () => {
+    const { c } = await register('ja@example.com')
+    expect((await c.json('/api/auth/me')).passkeys).toBe(0)
+    expect((await c.json('/api/auth/passkeys')).passkeys).toEqual([])
+  })
+})
+
 /* ------------------------------------------------------------------ */
 /*  To hlavní: účty si do sebe nevidí                                  */
 /* ------------------------------------------------------------------ */

@@ -61,6 +61,32 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 );
 CREATE INDEX IF NOT EXISTS api_tokens_user ON api_tokens (user_id);
 
+-- Passkeys (Face ID / Touch ID / Windows Hello). Ukládá se jen VEŘEJNÝ klíč –
+-- ten soukromý telefon nikdy nevydá, takže z ukradené databáze se přihlásit
+-- nedá. Sloupec counter je pojistka proti klonovanému klíči: musí růst.
+CREATE TABLE IF NOT EXISTS credentials (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  public_key   TEXT NOT NULL,
+  counter      INTEGER NOT NULL DEFAULT 0,
+  transports   TEXT NOT NULL DEFAULT '',
+  label        TEXT NOT NULL DEFAULT '',
+  backed_up    INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT NOT NULL,
+  last_used_at TEXT
+);
+CREATE INDEX IF NOT EXISTS credentials_user ON credentials (user_id);
+
+-- Rozehraná výzva pro passkey. Musí přežít mezi dvěma požadavky, a protože
+-- přihlášení začíná ještě před cookie, drží se v databázi pod náhodným
+-- klíčem, který si klient odnese a vrátí. Platnost pár minut, na jedno použití.
+CREATE TABLE IF NOT EXISTS challenges (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT REFERENCES users(id) ON DELETE CASCADE,
+  challenge  TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
 /* --- synchronizovaná data ------------------------------------------ */
 
 CREATE TABLE IF NOT EXISTS records (

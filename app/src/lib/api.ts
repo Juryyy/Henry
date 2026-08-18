@@ -53,7 +53,10 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 10_0
       // Neúspěšné přihlášení není vypršelé sezení. Kdyby se odhlašovalo i tady,
       // překlep v hesle by shodil přihlašovací obrazovku a hláška ze serveru
       // („nesedí e-mail nebo heslo“) by se ztratila.
-      const signInAttempt = path.startsWith('/api/auth/login') || path.startsWith('/api/auth/register')
+      const signInAttempt =
+        path.startsWith('/api/auth/login') ||
+        path.startsWith('/api/auth/register') ||
+        path.startsWith('/api/auth/passkey/login')
       if (res.status === 401 && !signInAttempt) onUnauthorized?.()
 
       throw new ApiError(detail ?? `Server odpověděl ${res.status}.`, res.status)
@@ -108,7 +111,7 @@ export function logout(): Promise<{ ok: boolean }> {
   return request('/api/auth/logout', { method: 'POST', body: '{}' })
 }
 
-export function fetchMe(): Promise<{ user: Account; subscriptions: number }> {
+export function fetchMe(): Promise<{ user: Account; subscriptions: number; passkeys: number }> {
   return request('/api/auth/me')
 }
 
@@ -152,6 +155,64 @@ export function createInvite(): Promise<{ code: string }> {
 
 export function fetchInvites(): Promise<{ invites: InviteInfo[] }> {
   return request('/api/auth/invites')
+}
+
+/* ------------------------------------------------------------------ */
+/*  Passkeys (Face ID / Touch ID)                                      */
+/* ------------------------------------------------------------------ */
+
+export interface PasskeyInfo {
+  id: string
+  label: string
+  createdAt: string
+  lastUsedAt: string | null
+  /** Zálohovaný klíč (iCloud Keychain) přežije ztrátu telefonu. */
+  backedUp: boolean
+}
+
+/**
+ * Výzva pro prohlížeč. `options` se tu schválně netypuje – jsou to struktury
+ * z WebAuthnu, appka do nich nesahá a jen je předává dál. Tvar hlídá
+ * knihovna, která je nakonec dostane (`lib/passkey.ts`).
+ */
+export interface PasskeyChallenge {
+  options: unknown
+  /** Server podle něj najde rozehranou výzvu – vrací se mu beze změny. */
+  challengeId: string
+}
+
+export function startPasskeyRegistration(): Promise<PasskeyChallenge> {
+  return request('/api/auth/passkey/register/options', { method: 'POST' })
+}
+
+export function finishPasskeyRegistration(
+  challengeId: string,
+  response: unknown,
+  label?: string,
+): Promise<{ ok: boolean; passkey: PasskeyInfo }> {
+  return request('/api/auth/passkey/register/verify', {
+    method: 'POST',
+    body: JSON.stringify({ challengeId, response, label }),
+  })
+}
+
+export function startPasskeyLogin(): Promise<PasskeyChallenge> {
+  return request('/api/auth/passkey/login/options', { method: 'POST' })
+}
+
+export function finishPasskeyLogin(challengeId: string, response: unknown): Promise<{ user: Account }> {
+  return request('/api/auth/passkey/login/verify', {
+    method: 'POST',
+    body: JSON.stringify({ challengeId, response }),
+  })
+}
+
+export function fetchPasskeys(): Promise<{ passkeys: PasskeyInfo[] }> {
+  return request('/api/auth/passkeys')
+}
+
+export function revokePasskey(id: string): Promise<{ ok: boolean }> {
+  return request('/api/auth/passkeys/revoke', { method: 'POST', body: JSON.stringify({ id }) })
 }
 
 /* ------------------------------------------------------------------ */

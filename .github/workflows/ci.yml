@@ -99,6 +99,9 @@ jobs:
           curl -sf http://127.0.0.1:8099/ | grep -q '<title>Henry</title>'
           # Bez přihlášení se k datům nikdo nedostane.
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8099/api/state)" = "401"
+          # Doména pro Face ID se bere z adresy požadavku, ne z konfigurace.
+          curl -sf -X POST -H 'Host: henry.example.com' \
+            http://127.0.0.1:8099/api/auth/passkey/login/options | grep -q '"rpId":"henry.example.com"'
 
       - name: Logy při chybě
         if: failure()

@@ -16,6 +16,7 @@ import {
   setUnauthorizedHandler,
   type Account,
 } from '@/lib/api'
+import { passkeysSupported, signInWithPasskey } from '@/lib/passkey'
 
 export const account = ref<Account | null>(null)
 export const signedIn = computed(() => account.value !== null)
@@ -28,6 +29,9 @@ export const serverReachable = ref(true)
 
 /** Zakládá se první účet? Pak není potřeba pozvánka. */
 export const registrationOpen = ref(false)
+
+/** Umí tenhle prohlížeč passkeys? Rozhoduje o tom, jestli nabídnout tlačítko. */
+export const passkeysAvailable = passkeysSupported()
 
 setUnauthorizedHandler(() => {
   account.value = null
@@ -60,6 +64,14 @@ export async function loadAccount(): Promise<void> {
 export async function signIn(email: string, password: string): Promise<void> {
   const { user } = await apiLogin(email, password)
   account.value = user
+}
+
+/**
+ * Přihlášení otiskem/obličejem. Heslo se nikam nepíše – prohlížeč podepíše
+ * výzvu klíčem, který má uložený pro tuhle adresu.
+ */
+export async function signInWithFaceId(options: { autofill?: boolean } = {}): Promise<void> {
+  account.value = await signInWithPasskey(options)
 }
 
 export async function signUp(input: {

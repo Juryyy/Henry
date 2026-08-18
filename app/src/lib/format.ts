@@ -5,6 +5,13 @@ export function num(value: number): string {
   return nf.format(Math.round(value)).replace(/ /g, ' ')
 }
 
+const df = new Intl.NumberFormat('cs-CZ', { maximumFractionDigits: 1 })
+
+/** 92.4 -> '92,4' – v češtině je desetinná čárka, ne tečka. */
+export function dec(value: number): string {
+  return df.format(value)
+}
+
 /** Skloňování: plural(3, 'krok', 'kroky', 'kroků') -> 'kroky' */
 export function plural(n: number, one: string, few: string, many: string): string {
   const abs = Math.abs(Math.round(n))

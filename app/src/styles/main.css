@@ -310,8 +310,8 @@ ul, ol { margin: 0; padding-left: 1.25em; }
   text-decoration: none;
   transition: transform 0.12s var(--ease), background 0.18s var(--ease), opacity 0.18s var(--ease),
     border-color 0.18s var(--ease);
+  /* Prefixy doplňuje build podle `cssTarget` – ručně psané zahodí. */
   user-select: none;
-  -webkit-user-select: none;
 }
 
 .btn:active { transform: scale(0.968); }

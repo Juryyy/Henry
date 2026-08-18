@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getExercise } from '@/data/exercises'
 import { blockEmoji, buildDay, doseLabel } from '@/lib/plan'
-import { formatDayWithWeekday, weekdayLong } from '@/lib/date'
+import { formatDay, weekdayLong } from '@/lib/date'
 import {
   completeBlock,
   isBlockDone,
@@ -31,7 +31,7 @@ function toggleDone(slot: number): void {
   <main class="page">
     <header class="page-header">
       <div>
-        <div class="eyebrow">{{ weekdayLong(today) }} · {{ formatDayWithWeekday(today) }}</div>
+        <div class="eyebrow">{{ weekdayLong(today) }} {{ formatDay(today) }}</div>
         <h1>Cvičení</h1>
       </div>
       <RouterLink to="/cviky" class="btn btn-sm btn-ghost">Katalog</RouterLink>
@@ -111,7 +111,7 @@ function toggleDone(slot: number): void {
   flex-shrink: 0;
 }
 
-.check.on { background: var(--accent); border-color: var(--accent); color: #06120b; }
+.check.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
 .exercise-list li + li { border-top: 1px solid var(--border); }
 

@@ -15,13 +15,17 @@ const props = withDefaults(
 )
 
 const clamped = computed(() => Math.max(0, Math.min(100, props.percent)))
+/** Ryska na nule splývá s okrajem pruhu – to není informace, to je kaz. */
+const markerLeft = computed(() =>
+  props.marker === null || props.marker < 1 ? null : Math.min(100, props.marker),
+)
 </script>
 
 <template>
   <div class="bar" :style="{ height: `${height}px` }" role="progressbar" :aria-valuenow="Math.round(clamped)">
     <div v-if="debtPercent > 0" class="debt" :style="{ width: `${Math.min(100, debtPercent)}%` }" />
     <div class="fill" :style="{ width: `${clamped}%`, background: color }" />
-    <div v-if="marker !== null" class="marker" :style="{ left: `${Math.max(0, Math.min(100, marker))}%` }" />
+    <div v-if="markerLeft !== null" class="marker" :style="{ left: `${markerLeft}%` }" />
   </div>
 </template>
 

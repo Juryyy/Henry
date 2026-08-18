@@ -61,7 +61,7 @@ test.describe('pokrok', () => {
     expect(state.measurements[0].weightKg).toBe(92.4)
     expect(state.measurements[0].toeTouchCm).toBe(15)
 
-    await expect(page.getByText('Naposledy 15 cm nad zemí.')).toBeVisible()
+    await expect(page.getByText('Poslední měření: 15 cm nad zemí')).toBeVisible()
   })
 
   test('druhé měření téhož dne nepřepíše dřívější hodnoty', async ({ page, context }) => {
@@ -107,6 +107,11 @@ test.describe('pokrok', () => {
     await expect(page.locator('.toast')).toContainText('Minuta v prkně')
     const state = await readState(page)
     expect(state.achievements['plank-60']).toBeTruthy()
+
+    // Oslava zmizí sama – odemčený milník zůstává v seznamu s fajfkou,
+    // takže není důvod nechat ji viset přes obsah.
+    await expect(page.locator('.toast')).toBeHidden({ timeout: 12_000 })
+    await expect(page.getByText('Minuta v prkně')).toBeVisible()
   })
 })
 

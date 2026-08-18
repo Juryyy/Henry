@@ -97,7 +97,8 @@ function isExcluded(id: string): boolean {
                 <span class="strong">{{ e.name }}</span>
                 <span class="tiny faint block">{{ e.target }}</span>
               </span>
-              <span class="badge tiny">{{ LEVEL_LABELS[e.level] }}</span>
+              <span v-if="isExcluded(e.id)" class="badge tiny">vyřazený</span>
+              <span v-else class="badge tiny">{{ LEVEL_LABELS[e.level] }}</span>
             </RouterLink>
           </li>
         </ul>

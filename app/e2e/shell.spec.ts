@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { readFileSync } from 'node:fs'
 import { dayKey, readState, ready, seed } from './helpers'
 
 test.describe('navigace a shell', () => {
@@ -132,10 +133,19 @@ test.describe('nastavení', () => {
     await page.goto('/#/nastaveni')
     await ready(page)
 
-    const backup = await page.evaluate(() => localStorage.getItem('henry.state.v1'))
-    expect(backup).toBeTruthy()
+    // Záloha se bere tlačítkem, ne z localStorage – jinak by test netvrdil nic
+    // o tom, jestli stahování vůbec funguje.
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Stáhnout zálohu' }).click(),
+    ])
+    expect(download.suggestedFilename()).toMatch(/^henry-zaloha-\d{4}-\d{2}-\d{2}\.json$/)
 
-    // Rozbít data a obnovit je ze zálohy.
+    const file = await download.path()
+    const backup = readFileSync(file, 'utf8')
+    expect(JSON.parse(backup).days[dayKey(0)].steps).toBe(4321)
+
+    // Rozbít data a obnovit je ze staženého souboru.
     await page.goto('/#/')
     await ready(page)
     await page.getByLabel('Zapsat kroky').fill('99')
@@ -145,7 +155,7 @@ test.describe('nastavení', () => {
     await page.goto('/#/nastaveni')
     await ready(page)
     await page.getByText('Obnovit ze zálohy').click()
-    await page.getByPlaceholder('Sem vlož obsah zálohy…').fill(backup!)
+    await page.getByPlaceholder('Sem vlož obsah zálohy…').fill(backup)
     await page.getByRole('button', { name: 'Obnovit' }).click()
 
     await expect.poll(async () => (await readState(page)).days[dayKey(0)].steps).toBe(4321)

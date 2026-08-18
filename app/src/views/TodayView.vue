@@ -134,13 +134,13 @@ const allBlocksDone = computed(() => blocksDone.value >= plans.value.length)
       <!-- Kroky ------------------------------------------------------- -->
       <section class="card card-hero">
         <div class="hero-top">
-          <ProgressRing
-            :percent="ringPercent"
-            :marker="week.steps.required > 0 ? (week.steps.expectedByNow / week.steps.required) * 100 : null"
-            :color="stepColor"
-            :size="124"
-            :thickness="11"
-          >
+          <!--
+            Prstenec měří DEN (nachozeno proti dnešní porci). Značka tempa sem
+            schválně nepatří – ta je počítaná z týdne a na denní stupnici by
+            ukazovala na místo, které nic neznamená. Týdenní tempo má vlastní
+            pruh v kartě „Týden“ níž.
+          -->
+          <ProgressRing :percent="ringPercent" :color="stepColor" :size="124" :thickness="11">
             <div class="ring-value num">{{ num(walked) }}</div>
             <div class="ring-sub tiny">z {{ num(portion) }}</div>
           </ProgressRing>
@@ -386,8 +386,8 @@ const allBlocksDone = computed(() => blocksDone.value >= plans.value.length)
 }
 
 .check {
-  width: 27px;
-  height: 27px;
+  width: 28px;
+  height: 28px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -407,46 +407,63 @@ const allBlocksDone = computed(() => blocksDone.value >= plans.value.length)
 .task-row {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 5px;
   font-size: 0.92rem;
 }
 
+/* Kolečko je vidět 25 px, ale trefit se dá do 44 px – prstem se do menšího
+   cíle netrefí ani ten, kdo se snaží. */
 .tick {
-  width: 25px;
-  height: 25px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
+  padding: 9px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.tick::before {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   border: 1.5px solid var(--border-strong);
-  background: transparent;
-  cursor: pointer;
   transition: background 0.18s var(--ease);
 }
 
-.tick:active { background: var(--surface-3); }
+.tick:active::before { background: var(--surface-3); }
 
 .switch {
-  width: 50px;
-  height: 30px;
+  width: 52px;
+  height: 32px;
   flex-shrink: 0;
   padding: 3px;
   border-radius: 999px;
-  border: 0;
+  border: 1px solid var(--border-strong);
   background: var(--surface-3);
   cursor: pointer;
-  transition: background 0.24s var(--ease);
+  transition: background 0.24s var(--ease), border-color 0.24s var(--ease);
 }
 
-.switch[aria-checked='true'] { background: var(--info); }
+.switch[aria-checked='true'] {
+  background: var(--info);
+  border-color: var(--info);
+}
 
 .knob {
   display: block;
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: #fff;
+  /* Pecka musí být vidět na obou podkladech, proto ne natvrdo bílá. */
+  background: var(--text);
   box-shadow: var(--shadow-sm);
-  transition: transform 0.26s var(--ease);
+  transition: transform 0.26s var(--ease), background 0.24s var(--ease);
 }
+
+.switch[aria-checked='true'] .knob { background: #fff; }
 
 .switch[aria-checked='true'] .knob { transform: translateX(20px); }
 

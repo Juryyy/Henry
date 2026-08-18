@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import LineChart from '@/components/LineChart.vue'
 import { formatDayShort, relativeDayLabel } from '@/lib/date'
-import { num, parseNumber } from '@/lib/format'
+import { dec, num, parseNumber } from '@/lib/format'
 import { bestStreak, removeMeasurement, saveMeasurement, state, streak, today } from '@/stores/app'
 import { measurementSeries } from '@/lib/engine'
 import { MILESTONES, unlockedCount } from '@/lib/milestones'
@@ -62,6 +62,21 @@ const plank = computed(() => measurementSeries(state, 'plankSec'))
 
 const history = computed(() => [...state.measurements].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12))
 
+/** Mazání na dvě klepnutí – jedno omylem by sebralo měsíc měření. */
+const confirmDelete = ref<string | null>(null)
+
+function askDelete(date: string): void {
+  if (confirmDelete.value === date) {
+    removeMeasurement(date)
+    confirmDelete.value = null
+    return
+  }
+  confirmDelete.value = date
+  setTimeout(() => {
+    if (confirmDelete.value === date) confirmDelete.value = null
+  }, 4000)
+}
+
 /* Souhrn --------------------------------------------------------------- */
 
 const totalSteps = computed(() => Object.values(state.days).reduce((sum, d) => sum + d.steps, 0))
@@ -91,8 +106,8 @@ const milestones = computed(() =>
 const unlocked = computed(() => unlockedCount(state))
 
 function toeTouchLabel(cm: number): string {
-  if (cm > 0) return `${num(cm)} cm nad zemí`
-  if (cm < 0) return `${num(Math.abs(cm))} cm pod úrovní chodidel`
+  if (cm > 0) return `${dec(cm)} cm nad zemí`
+  if (cm < 0) return `${dec(Math.abs(cm))} cm pod úrovní chodidel`
   return 'přesně na zem'
 }
 </script>
@@ -193,7 +208,8 @@ function toeTouchLabel(cm: number): string {
         <div class="card-title">Předklon – kolik chybí na zem</div>
         <LineChart :points="toeTouch" unit=" cm" lower-is-better :decimals="1" />
         <p v-if="toeTouch.length" class="tiny muted" style="margin-top: 6px">
-          Naposledy {{ toeTouchLabel(toeTouch.at(-1)!.value) }}.
+          Poslední měření: {{ toeTouchLabel(toeTouch.at(-1)!.value) }}. Čím níž křivka klesá,
+          tím blíž jsi zemi.
         </p>
         <p class="tiny faint" style="margin-top: 6px">
           První měřitelná změna přichází zhruba po čtyřech týdnech, typicky 2–5 cm. Prvních pár týdnů
@@ -233,12 +249,19 @@ function toeTouchLabel(cm: number): string {
               <div class="tiny faint">{{ relativeDayLabel(m.date, today) }}</div>
             </div>
             <div class="values grow">
-              <span v-if="m.weightKg" class="badge num">{{ m.weightKg }} kg</span>
-              <span v-if="m.waistCm" class="badge num">pas {{ m.waistCm }}</span>
-              <span v-if="m.toeTouchCm !== undefined" class="badge num">zem {{ m.toeTouchCm }}</span>
-              <span v-if="m.plankSec" class="badge num">prkno {{ m.plankSec }} s</span>
+              <span v-if="m.weightKg" class="badge num">{{ dec(m.weightKg) }} kg</span>
+              <span v-if="m.waistCm" class="badge num">pas {{ dec(m.waistCm) }}</span>
+              <span v-if="m.toeTouchCm !== undefined" class="badge num">zem {{ dec(m.toeTouchCm) }}</span>
+              <span v-if="m.plankSec" class="badge num">prkno {{ dec(m.plankSec) }} s</span>
             </div>
-            <button class="btn btn-sm btn-ghost" aria-label="Smazat" @click="removeMeasurement(m.date)">✕</button>
+            <button
+              class="btn btn-sm"
+              :class="confirmDelete === m.date ? 'btn-danger' : 'btn-ghost'"
+              :aria-label="confirmDelete === m.date ? `Opravdu smazat měření ${m.date}` : `Smazat měření ${m.date}`"
+              @click="askDelete(m.date)"
+            >
+              {{ confirmDelete === m.date ? 'Smazat?' : '✕' }}
+            </button>
           </li>
         </ul>
       </section>
@@ -272,7 +295,7 @@ function toeTouchLabel(cm: number): string {
 }
 
 .milestones li + li { border-top: 1px solid var(--border); }
-.milestones li.locked { opacity: 0.55; }
+.milestones li.locked { opacity: 0.72; }
 
 .milestones .grow { display: flex; flex-direction: column; gap: 2px; }
 

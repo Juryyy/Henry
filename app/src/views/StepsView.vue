@@ -22,6 +22,9 @@ const chartDays = computed(() =>
   weekDays(currentWeek.value).map((date) => ({
     date,
     value: state.days[date]?.steps ?? 0,
+    // Cíl se liší den od dne podle nastaveného rozložení, takže se sloupec
+    // porovnává se svým dnem, ne s plochým průměrem.
+    target: dailyStepTarget(state, date),
     future: date > today.value,
   })),
 )
@@ -169,7 +172,7 @@ async function pull(): Promise<void> {
               <ProgressBar
                 :percent="row.target > 0 ? (row.steps / row.target) * 100 : 0"
                 :height="6"
-                :color="row.steps >= row.target ? 'var(--accent)' : 'var(--surface-3)'"
+                :color="row.steps >= row.target ? 'var(--accent)' : 'var(--text-faint)'"
               />
             </span>
             <!-- Input je v DOMu pořád. Kdyby se objevil až po kliknutí,

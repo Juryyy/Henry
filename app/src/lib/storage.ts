@@ -180,6 +180,25 @@ export function exportState(state: AppState): string {
 }
 
 export function importState(json: string): AppState {
-  const parsed = migrate(JSON.parse(json) as Record<string, unknown>)
+  const raw = JSON.parse(json) as unknown
+  if (!looksLikeBackup(raw)) {
+    throw new Error('Tohle není záloha Henryho.')
+  }
+  const parsed = migrate(raw as Record<string, unknown>)
   return mergeDefaults(defaultState(), parsed)
+}
+
+/**
+ * Hrubá kontrola, že vložený text je opravdu záloha.
+ *
+ * Bez ní by libovolný platný JSON – třeba omylem vložené `{}` – prošel,
+ * doplnil se výchozími hodnotami a tiše smazal všechna data.
+ */
+function looksLikeBackup(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const record = value as Record<string, unknown>
+  const hasSettings = !!record.settings && typeof record.settings === 'object'
+  const hasShape =
+    'days' in record || 'schemaVersion' in record || 'measurements' in record || 'ledger' in record
+  return hasSettings && hasShape
 }

@@ -118,11 +118,11 @@ button.cell { cursor: pointer; }
 }
 
 .cell.today .dot {
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--text-faint);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text-faint);
 }
 
 .cell.today .dot.full {
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--accent);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--accent);
 }
 
 .rest-mark { font-weight: 700; }

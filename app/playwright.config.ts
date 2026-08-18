@@ -1,16 +1,24 @@
+import { existsSync } from 'node:fs'
 import { defineConfig, devices } from '@playwright/test'
 
 /**
  * E2E testy jedou proti produkčnímu buildu, ne proti dev serveru – zajímá
  * nás appka tak, jak ji uvidí telefon, včetně service workeru.
  *
- * Prohlížeč je předinstalovaný v obrazu; cesta se dá přebít proměnnou
- * CHROME_PATH, když si to někdo pouští u sebe.
+ * Prohlížeč: nejdřív CHROME_PATH, pak Chromium předinstalované v obrazu
+ * (jeho build se nemusí shodovat s tím, který si žádá nainstalovaná verze
+ * Playwrightu), a když není ani to, ten stažený Playwrightem.
  */
-const executablePath = process.env.CHROME_PATH || undefined
+const CANDIDATES = [process.env.CHROME_PATH, '/opt/pw-browsers/chromium'].filter(
+  (p): p is string => !!p,
+)
+const executablePath = CANDIDATES.find((p) => existsSync(p))
 
 export default defineConfig({
   testDir: './e2e',
+  // Generátor obrázků do README není test – má vlastní konfiguraci
+  // a pouští se ručně přes `npm run screenshots`.
+  testIgnore: 'screenshots.spec.ts',
   timeout: 45_000,
   expect: { timeout: 7_000 },
   fullyParallel: false,

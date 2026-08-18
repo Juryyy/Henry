@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { checkHealth, sendTestPush } from '@/lib/api'
-import { num } from '@/lib/format'
+import { dec, num, plural } from '@/lib/format'
 import { EXERCISES } from '@/data/exercises'
 import { debtCap, weeklyBlockTarget } from '@/lib/engine'
 import { isServerConfigured, lastSyncError, syncing, syncNow } from '@/lib/sync'
@@ -31,6 +31,13 @@ const s = computed(() => state.settings)
 
 const avgDaily = computed(() => Math.round(s.value.steps.weeklyTarget / 7))
 const debtCapValue = computed(() => Math.round(avgDaily.value * s.value.steps.debtCapDays))
+
+/** „2 dny“ / „1,5 dne“ – posuvník jde po půldnech. */
+const debtCapLabel = computed(() => {
+  const days = s.value.steps.debtCapDays
+  const isWhole = Number.isInteger(days)
+  return `${dec(days)} ${isWhole ? plural(days, 'den', 'dny', 'dnů') : 'dne'}`
+})
 
 const WEEKDAYS = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne']
 
@@ -254,7 +261,7 @@ const confirmReset = ref(false)
           </div>
 
           <div class="field">
-            <label for="cap">Strop dluhu: {{ s.steps.debtCapDays }} dny ({{ num(debtCapValue) }} kroků)</label>
+            <label for="cap">Strop dluhu: {{ debtCapLabel }} ({{ num(debtCapValue) }} kroků)</label>
             <input id="cap" v-model.number="s.steps.debtCapDays" type="range" min="0" max="4" step="0.5" />
             <div class="hint">
               Kolik se maximálně přenese do dalšího týdne. Při dvou dnech znamená dluh 1,3násobek
@@ -564,10 +571,11 @@ const confirmReset = ref(false)
 .dist-col { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 
 .dist-col input {
-  min-height: 38px;
-  padding: 4px;
+  min-height: 42px;
+  padding: 4px 2px;
   text-align: center;
-  font-size: 0.85rem;
+  /* Pod 16 px iOS při fokusu zazoomuje celou stránku. */
+  font-size: 16px;
 }
 
 .task-edit { display: flex; align-items: center; gap: 8px; }

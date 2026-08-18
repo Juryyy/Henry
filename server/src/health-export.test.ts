@@ -8,7 +8,8 @@ describe('kroky ze Zkratek', () => {
     expect(coerceSteps('8423')).toBe(8423)
     // Zkratky občas pošlou hodnotu naformátovanou podle národního prostředí.
     expect(coerceSteps('8 423')).toBe(8423)
-    expect(coerceSteps('8 423')).toBe(8423) // pevná mezera
+    expect(coerceSteps('8\u00a0423')).toBe(8423) // pevná mezera
+    expect(coerceSteps('8\u202f423')).toBe(8423) // úzká pevná mezera
     expect(coerceSteps('8,423')).toBe(8423)
     expect(coerceSteps('8.423')).toBe(8423)
   })

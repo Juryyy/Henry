@@ -8,28 +8,16 @@ const props = withDefaults(
     size?: number
     thickness?: number
     color?: string
-    /** Druhý, slabší kruh – kolik by mělo být hotovo touhle dobou. */
-    marker?: number | null
     label?: string
     sublabel?: string
   }>(),
-  { size: 148, thickness: 12, color: 'var(--accent)', marker: null, label: '', sublabel: '' },
+  { size: 148, thickness: 12, color: 'var(--accent)', label: '', sublabel: '' },
 )
 
 const radius = computed(() => (props.size - props.thickness) / 2)
 const circumference = computed(() => 2 * Math.PI * radius.value)
 const clamped = computed(() => Math.max(0, Math.min(100, props.percent)))
 const dash = computed(() => (clamped.value / 100) * circumference.value)
-/** Úhel značky očekávaného tempa, posunutý o -90° (kruh začíná nahoře). */
-const markerAngle = computed(() =>
-  props.marker === null ? null : (Math.max(0, Math.min(100, props.marker)) / 100) * 360 - 90,
-)
-const markerPos = computed(() => {
-  if (markerAngle.value === null) return null
-  const rad = (markerAngle.value * Math.PI) / 180
-  const c = props.size / 2
-  return { x: c + radius.value * Math.cos(rad), y: c + radius.value * Math.sin(rad) }
-})
 </script>
 
 <template>
@@ -54,15 +42,6 @@ const markerPos = computed(() => {
         :stroke-dasharray="`${dash} ${circumference}`"
         :transform="`rotate(-90 ${size / 2} ${size / 2})`"
         class="arc"
-      />
-      <circle
-        v-if="markerPos"
-        :cx="markerPos.x"
-        :cy="markerPos.y"
-        :r="thickness / 2 - 2.5"
-        fill="var(--bg)"
-        stroke="var(--text-faint)"
-        stroke-width="2"
       />
     </svg>
     <div class="inner">

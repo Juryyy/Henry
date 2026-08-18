@@ -11,7 +11,8 @@ import { weekdayShort, type DateKey } from '@/lib/date'
 
 const props = withDefaults(
   defineProps<{
-    days: { date: DateKey; value: number; future?: boolean }[]
+    days: { date: DateKey; value: number; future?: boolean; target?: number }[]
+    /** Referenční čára – průměrný denní cíl. */
     target: number
     /** Popisek pod grafem. */
     unit?: string
@@ -37,7 +38,7 @@ const active = computed(() => (selected.value !== null ? props.days[selected.val
     <div class="plot" :style="{ height: `${height}px` }">
       <!-- Cílová čára: čtená pozičně, ne barvou -->
       <div class="target-line" :style="{ bottom: `${targetPct}%` }">
-        <span class="target-label tiny">cíl {{ num(target) }}</span>
+        <span class="target-label tiny">průměr {{ num(target) }}</span>
       </div>
 
       <div class="bars">
@@ -51,7 +52,7 @@ const active = computed(() => (selected.value !== null ? props.days[selected.val
         >
           <span
             class="bar"
-            :class="{ met: day.value >= target && target > 0, future: day.future }"
+            :class="{ met: day.value >= (day.target ?? target) && (day.target ?? target) > 0, future: day.future }"
             :style="{ height: `${barPct(day.value)}%` }"
           />
         </button>

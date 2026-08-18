@@ -52,7 +52,7 @@ export interface Vars {
   Y: number
   /** Nachozené kroky. */
   S: number
-  /** Denní porce kroků. */
+  /** Celá dnešní porce kroků (nachozené + zbývající). */
   P: number
   /** Hotové bloky. */
   B: number
@@ -73,11 +73,16 @@ function varsFrom(snapshot: StateSnapshot | null): Vars {
   // `stepsNeededToday` už dnešní nachozené kroky odečítá – je to rovnou
   // „kolik ještě dnes“. Odečítat je znovu by chybějící počet podstřelilo.
   const missing = Math.max(0, s?.stepsNeededToday ?? 0)
+  // `P` je celá dnešní porce, ne zbytek – texty jako „Dnešní porce {P},
+  // máš {S}“ by jinak samy sobě odporovaly.
+  const portion = s?.stepPortionToday && s.stepPortionToday > 0
+    ? s.stepPortionToday
+    : (s?.steps ?? 0) + missing
   return {
     X: missing,
     Y: Math.max(1, Math.round(missing / 100)),
     S: s?.steps ?? 0,
-    P: s?.stepsNeededToday ?? 0,
+    P: portion,
     B: s?.blocksDone ?? 0,
     BT: s?.blocksTarget ?? 3,
     N: s?.streak ?? 0,
@@ -166,9 +171,9 @@ const WEEK_CLOSE_DEBT = [
 ] as const
 
 const MONDAY_START = [
-  'Nový týden. Denní porce {P}. Kdy jdeš do posilovny?',
+  'Nový týden. Denní porce {P} kroků. Kdy jdeš do posilovny?',
   'Pondělí. Na začátek něčeho je to statisticky nejlepší den v roce, hned po Novém roce.',
-  'Čerstvý týden, denní porce {P}. Nic z minulého týdne tě netahá dolů víc než musí.',
+  'Čerstvý týden, denní porce {P} kroků. Nic z minulého týdne tě netahá dolů víc než musí.',
 ] as const
 
 const TASKS = [

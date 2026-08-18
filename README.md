@@ -5,7 +5,9 @@ minut cvičení, týdenní úkoly a notifikace, které chodí i když je appka z
 
 Zaměření: **zpevnit střed těla, zhubnout, dostat se rukama na zem.**
 
-<!-- Obrázek sem přijde, až si appku nasadíš a uděláš screenshot. -->
+| Dnešek | Cvičení | Kroky | Pokrok |
+|---|---|---|---|
+| <img src="docs/screenshots/dnes.png" width="200" alt="Dnešní přehled s prstencem kroků" /> | <img src="docs/screenshots/cviceni.png" width="200" alt="Tři denní bloky cvičení" /> | <img src="docs/screenshots/kroky.png" width="200" alt="Zápis kroků a graf týdne" /> | <img src="docs/screenshots/pokrok.png" width="200" alt="Série, milníky a měření" /> |
 
 ---
 
@@ -37,14 +39,21 @@ to zrovna nevyšlo, je nejjistější způsob, jak ho odradit.
 | Blok | Kdy | Co | Proč |
 |---|---|---|---|
 | Ráno | 7:15 | rozhýbání páteře, dýchání, McGillova trojka | ploténky jsou po noci nasáklé vodou, ohýbat se pod zátěží je pro ně ráno nejhorší – proto tu nejsou sedy-lehy |
-| Poledne | 12:30 | core naostro + jeden cvik na kyčle | přerušení sezení, které je ten hlavní problém |
+| Poledne | 12:30 | core naostro, cvik na kyčle a dvě minuty kardia | přerušení sezení, které je ten hlavní problém; kardio proto, že hubne se z výdeje, ne z prkna |
 | Večer | 20:00 | protahování se zaměřením na zadní stranu stehen | večer je rozsah pohybu největší a sval prohřátý |
 
 Plán se každý den mírně obmění, kostra zůstává. Protažení hamstringů je každý
 večer – rozsah roste z pravidelnosti, ne z toho, jak silně do toho jdeš.
 
+Obtížnost se **nestřídá**, ta se posouvá: podle zvolené úrovně dostaneš prkno
+na kolenou, plné prkno, nebo prkno s dotykem ramen – ale pokaždé to stejné.
+Střídají se jen cviky, které jsou vzájemně zaměnitelné. Jinak by pestrost
+znamenala jen to, že jeden den cvičíš snadnou variantu a druhý těžkou.
+
 **46 cviků** s postupem, chybami, lehčí i těžší variantou a poznámkou, kdy to
 nedělat. Co se ti nelíbí nebo tě to bolí, vyřadíš a Henry to nahradí jiným.
+Čtyři cviky s činkami jsou v katalogu kvůli týdennímu úkolu „posilovna“ –
+do domácích bloků se nepletou.
 
 **Série, která snese jeden špatný den.** Za každých sedm dní máš záchranu –
 propadlý den ji spotřebuje, ale sérii neshodí. Teprve druhý propadlý den
@@ -115,13 +124,14 @@ Pak v appce **Nastavení → Server**: adresa serveru a token. Tlačítko
 
 ```bash
 cd app
-npm test          # jednotkové testy výpočtů (49)
-npm run e2e       # e2e testy v prohlížeči (32) – projdou appku jako uživatel
+npm test          # jednotkové testy výpočtů a plánu (91)
+npm run e2e       # e2e testy v prohlížeči (34) – projdou appku jako uživatel
 npm run typecheck
 npm run build
+npm run screenshots  # přegeneruje obrázky v docs/screenshots
 
 cd ../server
-npm test
+npm test          # plánovač, HTTP rozhraní, texty notifikací, příjem z Health (78)
 npm run typecheck
 npm run build
 ```

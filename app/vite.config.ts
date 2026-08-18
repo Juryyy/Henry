@@ -72,6 +72,13 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
+    /**
+     * CSS se musí cílit na prohlížeče, ne na verzi ECMAScriptu. Bez tohohle
+     * esbuild u vlastností s prefixem (backdrop-filter) nechal jen
+     * `-webkit-` variantu a v Chromu pak lišta vůbec nerozmazávala pozadí.
+     * Safari 16 je stejně spodní hranice – push na iOS je od 16.4.
+     */
+    cssTarget: ['safari16', 'chrome111', 'firefox121'],
     sourcemap: true,
   },
   test: {

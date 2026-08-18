@@ -76,10 +76,21 @@ const activeIndex = computed(() => {
   right: 0;
   z-index: 50;
   padding-bottom: var(--safe-bottom);
-  background: color-mix(in srgb, var(--bg-soft) 86%, transparent);
+  background: color-mix(in srgb, var(--bg-soft) 90%, transparent);
+  /*
+    Prefix sem ručně nepatří: `-webkit-` variantu si podle `build.cssTarget`
+    doplní sám bundler. Napsaná ručně by ho naopak zmátla – obě deklarace
+    vyhodnotí jako duplicitu a nechá jen tu s prefixem, kterou novější Chrome
+    už nezná, takže by lišta pozadí vůbec nerozmazávala.
+  */
   backdrop-filter: saturate(1.7) blur(18px);
-  -webkit-backdrop-filter: saturate(1.7) blur(18px);
   border-top: 1px solid var(--border);
+}
+
+/* Bez rozmazání pozadí by text pod lištou prosvítal a lišta by vypadala
+   jako chyba vykreslení. Tam, kde backdrop-filter není, je proto neprůhledná. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .tabbar { background: var(--bg-soft); }
 }
 
 .inner {

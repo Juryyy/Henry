@@ -1,14 +1,34 @@
 <script setup lang="ts">
+import { onBeforeUnmount, watch } from 'vue'
 import { freshMilestones } from '@/stores/app'
 
 /**
  * Gratulace k milníku. Zobrazí se přes obsah, zavírá se klepnutím.
  * Fronta se odbavuje po jednom – dvě oslavy naráz vyzní jako spam.
+ *
+ * Po chvíli zmizí sama. Odemčený milník nikam neuteče – je natrvalo
+ * v Pokroku s fajfkou – takže nechávat oslavu viset přes obsah, dokud ji
+ * někdo neodklikne, by byla jen překážka.
  */
+const SHOW_MS = 7_000
+
+let timer: ReturnType<typeof setTimeout> | undefined
 
 function dismiss(): void {
   freshMilestones.value = freshMilestones.value.slice(1)
 }
+
+watch(
+  () => freshMilestones.value[0]?.id,
+  (id) => {
+    clearTimeout(timer)
+    if (!id) return
+    timer = setTimeout(dismiss, SHOW_MS)
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => clearTimeout(timer))
 </script>
 
 <template>

@@ -99,13 +99,3 @@ export async function sendTestPush(server: ServerSettings): Promise<{ sent: numb
   if (!url) throw new Error('Server není nastavený.')
   return request(url, { method: 'POST', headers: headers(server), body: '{}' })
 }
-
-export async function fetchServerLog(server: ServerSettings): Promise<{ at: string; kind: string; detail: string }[]> {
-  const url = api(server, '/api/log')
-  if (!url) throw new Error('Server není nastavený.')
-  const data = await request<{ log: { at: string; kind: string; detail: string }[] }>(url, {
-    method: 'GET',
-    headers: headers(server),
-  })
-  return data.log ?? []
-}

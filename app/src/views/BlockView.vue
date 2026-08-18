@@ -342,7 +342,7 @@ const setLabel = computed(() => {
 .dose-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--r-lg);
   padding: 18px;
   text-align: center;
 }

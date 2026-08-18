@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import WeekStrip from '@/components/WeekStrip.vue'
-import { addWeeks, formatWeekRange, type WeekKey } from '@/lib/date'
+import { addWeeks, daysBetween, formatWeekRange, type WeekKey } from '@/lib/date'
 import { blocks as fmtBlocks, num, steps as fmtSteps, walkTime } from '@/lib/format'
 import { summarizeWeek } from '@/lib/engine'
 import {
@@ -19,6 +19,14 @@ const viewWeek = ref<WeekKey>(currentWeek.value)
 
 const summary = computed(() => summarizeWeek(state, viewWeek.value, today.value))
 const isCurrent = computed(() => viewWeek.value === currentWeek.value)
+
+/** „Tenhle týden“ / „Minulý týden“ / „Před 5 týdny“. */
+const weekLabel = computed(() => {
+  const back = Math.round(daysBetween(viewWeek.value, currentWeek.value) / 7)
+  if (back === 0) return 'Tenhle týden'
+  if (back === 1) return 'Minulý týden'
+  return `Před ${back} ${back < 5 ? 'týdny' : 'týdny'}`
+})
 const canGoForward = computed(() => viewWeek.value < currentWeek.value)
 
 function shift(delta: number): void {
@@ -74,12 +82,19 @@ function paceLabel(pace: string): { text: string; cls: string } {
   <main class="page">
     <header class="page-header">
       <div>
-        <div class="eyebrow">{{ isCurrent ? 'Tenhle týden' : 'Minulý týden' }}</div>
+        <div class="eyebrow">{{ weekLabel }}</div>
         <h1>{{ formatWeekRange(viewWeek) }}</h1>
       </div>
-      <div class="row" style="gap: 4px">
-        <button class="btn btn-sm btn-ghost" @click="shift(-1)">‹</button>
-        <button class="btn btn-sm btn-ghost" :disabled="!canGoForward" @click="shift(1)">›</button>
+      <div class="row" style="gap: 6px">
+        <button class="btn btn-sm btn-ghost" aria-label="Předchozí týden" @click="shift(-1)">‹</button>
+        <button
+          class="btn btn-sm btn-ghost"
+          aria-label="Následující týden"
+          :disabled="!canGoForward"
+          @click="shift(1)"
+        >
+          ›
+        </button>
       </div>
     </header>
 
@@ -154,6 +169,7 @@ function paceLabel(pace: string): { text: string; cls: string } {
               class="tick"
               :class="{ on: t.remaining === 0 }"
               :disabled="!isCurrent"
+              :aria-label="`Splnit ${t.task.title}`"
               @click="toggleTaskDone(t.task.id)"
             >
               ✓
@@ -279,7 +295,7 @@ function paceLabel(pace: string): { text: string; cls: string } {
   cursor: pointer;
 }
 
-.tick.on { background: var(--accent); border-color: var(--accent); color: #06120b; }
+.tick.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .tick:disabled { opacity: 0.5; cursor: default; }
 
 .bankruptcy {

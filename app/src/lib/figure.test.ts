@@ -215,6 +215,33 @@ describe('objem trupu', () => {
     }
   })
 
+  it('výřez sedí na postavičce, ne někde vedle', () => {
+    // `look` je směr, ne bod na plátně. Když se omylem počítal do obalu,
+    // výřez se natáhl až k počátku souřadnic – obrázky se nepokazily,
+    // jen se scvrkly do rohu, což je přesně ten druh chyby, kterou testy
+    // na „nic se neořízne" nechytí.
+    for (const [id, figure] of Object.entries(FIGURES)) {
+      const [x, y, w, h] = fitView(figure.frames)
+      let minX = 100
+      let maxX = 0
+      let minY = 100
+      let maxY = GROUND_Y
+      for (const pose of figure.frames) {
+        for (const joint of JOINTS) {
+          minX = Math.min(minX, pose[joint][0])
+          maxX = Math.max(maxX, pose[joint][0])
+          minY = Math.min(minY, pose[joint][1])
+          maxY = Math.max(maxY, pose[joint][1])
+        }
+      }
+      // Kolem obsahu se přidává jen okraj; poměr stran se dorovnává v jednom
+      // směru, ten druhý musí zůstat těsný. Tolerance pokrývá poloměr hlavy.
+      const slackX = minX - x + (x + w - maxX)
+      const slackY = minY - y + (y + h - maxY)
+      expect(Math.min(slackX, slackY), id).toBeLessThan(24)
+    }
+  })
+
   it('výřez počítá i s trupem a nosem, nic se neořízne', () => {
     for (const [id, figure] of Object.entries(FIGURES)) {
       const [x, y, w, h] = fitView(figure.frames)

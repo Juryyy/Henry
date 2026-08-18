@@ -26,6 +26,17 @@ function toggleExcluded(): void {
   else list.push(id)
 }
 
+/**
+ * Kreslí se u tohohle cviku obě poloviny těla?
+ *
+ * U střídavých cviků (pták-pes, mrtvý brouk, pochod) je šedá barva jediné,
+ * co říká, která ruka a noha je která – a to je potřeba napsat. U cviků,
+ * kde je vidět jen jedna polovina, by ta věta jen mátla.
+ */
+const twoSided = computed(() =>
+  (figure.value?.frames ?? []).some((pose) => pose.handFar || pose.toeFar),
+)
+
 const doseText = computed(() => {
   const e = exercise.value
   if (!e) return ''
@@ -66,7 +77,11 @@ const doseText = computed(() => {
 
       <section v-if="figure" class="card demo">
         <ExerciseFigure :figure="figure" :category="exercise.category" animated />
-        <p class="tiny faint center" style="margin: 6px 0 0">Ukázka provedení</p>
+        <p class="tiny faint center" style="margin: 6px 0 0">
+          Ukázka provedení<template v-if="twoSided">
+            · šedá polovina těla je ta vzdálenější</template
+          >
+        </p>
       </section>
 
       <section class="card">

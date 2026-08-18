@@ -104,7 +104,15 @@ function lerpPoint(a: Point, b: Point, t: number): Point {
 }
 
 const JOINTS = ['head', 'neck', 'hip', 'elbow', 'hand', 'knee', 'ankle', 'toe'] as const
-const OPTIONAL_JOINTS = ['elbowFar', 'handFar', 'kneeFar', 'ankleFar', 'toeFar', 'mid', 'look'] as const
+/**
+ * Nepovinné **body na plátně**. `look` mezi ně nepatří: je to směr, ne bod –
+ * a kdyby se do rámování dostal, výřez by se natáhl až k počátku souřadnic
+ * a postavička by se scvrkla do rohu. (Přesně to se stalo.)
+ */
+const OPTIONAL_POINTS = ['elbowFar', 'handFar', 'kneeFar', 'ankleFar', 'toeFar', 'mid'] as const
+
+/** Co se kromě kloubů dopočítává při přechodu mezi pózami. */
+const INTERPOLATED = [...OPTIONAL_POINTS, 'look'] as const
 
 /** Poloměr hlavy. Kreslí se s ním, a počítá se s ním i výřez. */
 export const HEAD_R = 5.2
@@ -214,7 +222,7 @@ export function poseAt(frames: Pose[], phase: number): Pose {
   for (const joint of JOINTS) {
     out[joint] = lerpPoint(from[joint], to[joint], t)
   }
-  for (const joint of OPTIONAL_JOINTS) {
+  for (const joint of INTERPOLATED) {
     // Páteř a pohled jsou zvláštní případy: když chybí, neznamená to „nic",
     // ale konkrétní výchozí hodnotu. Dopočítá se, jinak by se záda mezi
     // pózami narovnala skokem a hlava by se otočila trhnutím.
@@ -278,7 +286,7 @@ export function fitView(frames: Pose[]): [number, number, number, number] {
       if (joint === 'head') continue
       include(pose[joint][0], pose[joint][1])
     }
-    for (const joint of OPTIONAL_JOINTS) {
+    for (const joint of OPTIONAL_POINTS) {
       const point = pose[joint]
       if (point) include(point[0], point[1])
     }

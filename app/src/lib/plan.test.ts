@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BLOCK_TEMPLATES, buildBlock, buildDay, doseLabel, itemSeconds, planId } from './plan'
+import { BLOCK_TEMPLATES, buildBlock, buildDay, defaultBlocks, doseLabel, itemSeconds, planId } from './plan'
 import { EXERCISES, getExercise } from '@/data/exercises'
 import { defaultState } from './storage'
 import type { AppState, BlockSlot } from './types'
@@ -53,6 +53,27 @@ describe('šablony bloků', () => {
 
   it('nabízejí všechna zaměření a každé právě jednou', () => {
     expect(BLOCK_TEMPLATES.map((t) => t.focus).sort()).toEqual(['core', 'kardio', 'protazeni', 'rozhybani'])
+  })
+
+  it('výchozí den nezávisí na pořadí šablon', () => {
+    // Kdyby se `defaultBlocks` řídilo pozicí v poli, přidání nebo přeházení
+    // šablony by tiše změnilo výchozí den každému, kdo si ho nepřenastavil.
+    expect(defaultBlocks().map((b) => b.focus)).toEqual(['rozhybani', 'core', 'protazeni'])
+    expect(defaultBlocks().map((b) => b.slot)).toEqual([0, 1, 2])
+    expect(defaultBlocks().every((b) => b.enabled && b.minutes === 15)).toBe(true)
+  })
+
+  it('ranní rozhýbání vynechává ohýbání beder, ostatní zaměření ne', () => {
+    // Pravidlo patří k rozhýbání, ne k tomu, že je blok první v pořadí.
+    const morning = buildBlock(makeState(), DAY, 0)
+    expect(morning.items.some((i) => i.exerciseId === 'sedy-lehy')).toBe(false)
+
+    const flipped = makeState((s) => {
+      s.settings.exercise.blocks[0]!.focus = 'core'
+      s.settings.exercise.blocks[1]!.focus = 'rozhybani'
+    })
+    // Po prohození drží pravidlo se zaměřením, ne se slotem.
+    expect(buildBlock(flipped, DAY, 1).items.some((i) => i.exerciseId === 'sedy-lehy')).toBe(false)
   })
 })
 

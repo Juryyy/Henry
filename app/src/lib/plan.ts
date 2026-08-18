@@ -141,10 +141,24 @@ export const FOCUS_LABELS: Record<BlockFocus, string> = {
 }
 
 /** Výchozí rozvržení dne. Kostra, kterou si uživatel může přeskládat. */
+/**
+ * Zaměření výchozích tří pozic. Vypsané schválně jménem, ne pořadím
+ * v šablonách – jinak by přeházení šablon (nebo přidání další) tiše změnilo
+ * výchozí den každému, kdo si ho ještě nepřenastavil.
+ */
+const DEFAULT_FOCUS: BlockFocus[] = ['rozhybani', 'core', 'protazeni']
+
 export function defaultBlocks(): BlockConfig[] {
-  return ([0, 1, 2] as BlockSlot[]).map((slot) => {
-    const template = BLOCK_TEMPLATES[slot]!
-    return { slot, enabled: true, title: template.title, emoji: template.emoji, focus: template.focus, minutes: 15 }
+  return DEFAULT_FOCUS.map((focus, index) => {
+    const template = templateFor(focus)
+    return {
+      slot: index as BlockSlot,
+      enabled: true,
+      title: template.title,
+      emoji: template.emoji,
+      focus,
+      minutes: 15,
+    }
   })
 }
 

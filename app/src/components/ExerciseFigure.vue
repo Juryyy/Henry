@@ -143,6 +143,8 @@ const strapEnds = computed<[Point, Point] | null>(() => {
       :y2="pose.hand[1] + 3"
     />
 
+    <!-- Menší než poloměr, se kterým počítá výřez – radši trochu místa navíc
+         než hlava odříznutá o okraj. -->
     <circle class="head" :cx="pose.head[0]" :cy="pose.head[1]" r="5.2" />
   </svg>
 </template>

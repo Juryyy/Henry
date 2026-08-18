@@ -57,7 +57,6 @@ describe('geometrie pózy', () => {
         for (const [x, y] of points(pose)) {
           expect(x, `${id} póza ${index} x`).toBeGreaterThanOrEqual(0)
           expect(x, `${id} póza ${index} x`).toBeLessThanOrEqual(100)
-          // Hlava má poloměr 6, takže střed nesmí být výš než 6.
           expect(y, `${id} póza ${index} y`).toBeGreaterThanOrEqual(0)
           expect(y, `${id} póza ${index} y`).toBeLessThanOrEqual(100)
         }

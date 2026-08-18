@@ -750,7 +750,7 @@ const confirmReset = ref(false)
               </ul>
               <p class="tiny faint">
                 Klíč platí pro adresu, na které Henry běží. Když server přestěhuješ na jinou
-                doménu, budeš si ho tam nastavit znovu.
+                doménu, budeš si ho tam muset nastavit znovu – proto to heslo.
               </p>
             </div>
           </details>

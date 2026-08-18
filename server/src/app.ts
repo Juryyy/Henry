@@ -358,7 +358,9 @@ app.get('/api/auth/passkeys', requireAuth, (req: Request, res: Response) => {
 })
 
 app.post('/api/auth/passkeys/revoke', requireAuth, json, (req: Request, res: Response) => {
-  const id = str((req.body as Record<string, unknown>)?.id, 500)
+  // Id klíče smí mít podle specifikace až 1023 bajtů, tedy skoro 1400 znaků
+  // v base64url. Kratší strop by delší id uřízl a klíč by pak nešel odebrat.
+  const id = str((req.body as Record<string, unknown>)?.id, 2_000)
   if (!id) {
     res.status(400).json({ error: 'Chybí id klíče.' })
     return

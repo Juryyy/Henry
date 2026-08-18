@@ -239,6 +239,19 @@ test.describe('nastavení', () => {
     await expect(page.getByRole('textbox', { name: /Ráno/ })).toHaveCount(0)
   })
 
+  test('appka řekne, když se nastavená délka bloku nedá naplnit', async ({ page, context }) => {
+    await seed(context)
+    await page.goto('/#/nastaveni')
+    await ready(page)
+
+    await page.getByRole('button', { name: 'Upravit blok Večer' }).click()
+    await page.getByRole('button', { name: '30 minut' }).click()
+
+    // Protahování se přes určitou hranici doplňovat nemá – ať to appka napíše,
+    // místo aby tiše dala kratší blok, než si člověk vybral.
+    await expect(page.getByText(/plán vyjde na \d+/)).toBeVisible()
+  })
+
   test('poslední zapnutý blok vypnout nejde', async ({ page, context }) => {
     await seed(context)
     await page.goto('/#/nastaveni')

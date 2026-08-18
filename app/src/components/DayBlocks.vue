@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { state } from '@/stores/app'
-import { activeBlocks, blockConfig, defaultBlocks, FOCUS_LABELS, templateFor } from '@/lib/plan'
+import { state, today } from '@/stores/app'
+import { activeBlocks, blockConfig, buildBlock, defaultBlocks, FOCUS_LABELS, templateFor } from '@/lib/plan'
 import type { BlockConfig, BlockFocus, BlockSlot } from '@/lib/types'
 
 /**
@@ -45,8 +45,23 @@ function resetBlocks(): void {
   open.value = null
 }
 
-const summary = (block: BlockConfig): string =>
-  `${FOCUS_LABELS[block.focus]} · ${block.minutes} min`
+/**
+ * Kolik minut plán opravdu vyjde. Nemusí to sedět s nastavenou délkou:
+ * u protahování se přes ~4 minuty na svalovou skupinu a sezení rozsah už
+ * nezvětšuje (Ingram et al. 2024), takže se blok radši nedoplní do sytosti,
+ * než aby přidával minuty, ze kterých nic není.
+ */
+const plannedMinutes = (block: BlockConfig): number =>
+  Math.round(buildBlock(state, today.value, block.slot).totalSeconds / 60)
+
+/** Vejde se do bloku to, co si člověk nastavil? */
+const fallsShort = (block: BlockConfig): boolean => plannedMinutes(block) < block.minutes - 2
+
+const summary = (block: BlockConfig): string => {
+  const planned = plannedMinutes(block)
+  const length = fallsShort(block) ? `${block.minutes} min, plán vyjde na ${planned}` : `${block.minutes} min`
+  return `${FOCUS_LABELS[block.focus]} · ${length}`
+}
 </script>
 
 <template>
@@ -148,6 +163,12 @@ const summary = (block: BlockConfig): string =>
               >
                 {{ m }} min
               </button>
+            </div>
+            <div v-if="fallsShort(block)" class="hint">
+              Z {{ block.minutes }} minut vyjde plán na {{ plannedMinutes(block) }}. Delší blok tuhle
+              práci neudělá lépe – u protahování se přes zhruba čtyři minuty na svalovou skupinu
+              rozsah už nezvětšuje a série navíc by byly jen čas. Zkus jinou délku, nebo si přidej
+              druhý blok s jiným zaměřením.
             </div>
           </div>
 

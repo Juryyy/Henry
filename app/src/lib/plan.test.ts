@@ -133,6 +133,19 @@ describe('sestavení bloku', () => {
     }
   })
 
+  it('dlouhý protahovací blok se nedoplní na sílu', () => {
+    // Přes zhruba čtyři minuty na svalovou skupinu a sezení už rozsah neroste
+    // (Ingram et al. 2024). Půlhodinový protahovací blok se proto nemá dorovnat
+    // sériemi navíc – radši vyjde kratší. Appka to u délky napíše.
+    const state = makeState((s) => {
+      s.settings.exercise.blocks[2]!.minutes = 30
+    })
+    const block = buildBlock(state, DAY, 2)
+    expect(block.totalSeconds).toBeLessThan(30 * 60)
+    // Ale ani se nesmí scvrknout na nic – pořád je to plnohodnotný blok.
+    expect(block.totalSeconds).toBeGreaterThan(15 * 60)
+  })
+
   it('kratší nastavená délka bloku plán opravdu zkrátí', () => {
     const long = buildBlock(makeState(), DAY, 1)
     const short = buildBlock(

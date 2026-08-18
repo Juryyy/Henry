@@ -720,6 +720,14 @@ const confirmReset = ref(false)
             </button>
           </details>
 
+          <RouterLink to="/health" class="row-between health-link">
+            <span class="small">
+              📲 Kroky z Apple Health
+              <span class="tiny faint block">Token, adresa i postup na jedné obrazovce</span>
+            </span>
+            <span class="faint" aria-hidden="true">›</span>
+          </RouterLink>
+
           <details>
             <summary class="small muted" style="cursor: pointer">Token pro Zkratku</summary>
             <p class="tiny faint" style="margin: 8px 0">
@@ -837,6 +845,15 @@ const confirmReset = ref(false)
 </template>
 
 <style scoped>
+.health-link {
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  background: var(--surface-2);
+}
+
 .version + .version { border-top: 1px solid var(--border); padding-top: 6px; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

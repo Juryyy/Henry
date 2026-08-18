@@ -192,10 +192,12 @@ async function pull(): Promise<void> {
         <p class="tiny faint" style="margin-top: 10px">Číslo se dá rovnou přepsat.</p>
       </section>
 
-      <RouterLink v-if="!isServerConfigured()" to="/nastaveni" class="card link-card">
-        <div class="strong">Naimportovat kroky automaticky?</div>
+      <!-- Ukazovalo se to jen bez serveru, tedy přesně tehdy, kdy to nemohlo
+           fungovat – a odkazovalo do nastavení, kde ta sekce dávno není. -->
+      <RouterLink to="/health" class="card link-card">
+        <div class="strong">📲 Kroky z Apple Health automaticky</div>
         <div class="tiny muted">
-          Zkratka v iOS umí každý večer poslat počet kroků z Health rovnou sem. Nastavení → Server.
+          iPhone je může posílat sám každý večer. Token i adresu najdeš připravené ke zkopírování.
         </div>
       </RouterLink>
     </div>

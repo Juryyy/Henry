@@ -57,6 +57,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Pokrok' },
   },
   {
+    path: '/health',
+    name: 'health',
+    component: () => import('./views/HealthView.vue'),
+    meta: { title: 'Apple Health' },
+  },
+  {
     path: '/cviky',
     name: 'cviky',
     component: () => import('./views/CatalogueView.vue'),

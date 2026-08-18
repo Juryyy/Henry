@@ -6,9 +6,11 @@ dist/
 # server
 .env
 server/.env
-data/
-server/data/
-server/dist/
+# Lomítko na začátku je podstatné: holé `data/` by ignorovalo jakoukoli složku
+# toho jména kdekoli v repu, tedy i `app/src/data/` s katalogem cviků.
+/data/
+/server/data/
+/server/dist/
 
 # výstup ze smoke.mjs
 app/.smoke/

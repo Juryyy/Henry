@@ -3,6 +3,8 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getExercise } from '@/data/exercises'
 import { blockEmoji, buildDay, doseLabel } from '@/lib/plan'
+import { getFigure } from '@/data/figures'
+import ExerciseFigure from '@/components/ExerciseFigure.vue'
 import { formatDay, weekdayLong } from '@/lib/date'
 import {
   completeBlock,
@@ -77,6 +79,9 @@ function toggleDone(slot: number): void {
         <ul class="list-reset exercise-list">
           <li v-for="pItem in plan.items" :key="pItem.exerciseId">
             <RouterLink :to="`/cviky/${pItem.exerciseId}`" class="ex-link">
+              <span class="thumb" aria-hidden="true">
+                <ExerciseFigure :figure="getFigure(pItem.exerciseId)" />
+              </span>
               <span class="grow">{{ getExercise(pItem.exerciseId)?.name ?? pItem.exerciseId }}</span>
               <span class="tiny faint">{{
                 getExercise(pItem.exerciseId) ? doseLabel(getExercise(pItem.exerciseId)!, pItem) : ''
@@ -99,6 +104,12 @@ function toggleDone(slot: number): void {
 </template>
 
 <style scoped>
+.thumb {
+  width: 58px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
 .check {
   width: 32px;
   height: 32px;

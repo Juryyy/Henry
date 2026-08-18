@@ -1,7 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EXERCISES } from '@/data/exercises'
 import { FIGURES, getFigure } from '@/data/figures'
-import { GROUND_Y, pingPong, poseAt, spineControl, type Point, type Pose } from './figure'
+import {
+  clockListenerCount,
+  GROUND_Y,
+  pingPong,
+  poseAt,
+  spineControl,
+  subscribeClock,
+  type Point,
+  type Pose,
+} from './figure'
 
 /**
  * Postavičky u cviků.
@@ -170,5 +179,53 @@ describe('přechod mezi pózami', () => {
 
   it('prázdný seznam pózí je chyba, ne tichý nesmysl', () => {
     expect(() => poseAt([], 0)).toThrow()
+  })
+})
+
+describe('společné hodiny', () => {
+  /**
+   * Smyčka `requestAnimationFrame` se musí zastavit, jakmile na stránce
+   * nezůstane jediná animovaná postavička. Uniklá smyčka by běžela dál
+   * v pozadí a na telefonu se to pozná na baterce.
+   */
+  let running = 0
+
+  function fakeRaf(): void {
+    vi.stubGlobal('requestAnimationFrame', () => {
+      running++
+      return running
+    })
+    vi.stubGlobal('cancelAnimationFrame', () => {
+      running--
+    })
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    running = 0
+  })
+
+  it('se rozběhnou při prvním odběrateli a stojí po posledním', () => {
+    fakeRaf()
+    const stopA = subscribeClock(() => {})
+    const stopB = subscribeClock(() => {})
+    expect(clockListenerCount()).toBe(2)
+    // Druhý odběratel nesmí rozjet druhou smyčku.
+    expect(running).toBe(1)
+
+    stopA()
+    expect(running).toBe(1)
+    stopB()
+    expect(clockListenerCount()).toBe(0)
+    expect(running).toBe(0)
+  })
+
+  it('dvojité odhlášení nic nerozbije', () => {
+    fakeRaf()
+    const stop = subscribeClock(() => {})
+    stop()
+    stop()
+    expect(clockListenerCount()).toBe(0)
+    expect(running).toBe(0)
   })
 })

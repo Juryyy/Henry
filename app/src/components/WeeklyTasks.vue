@@ -292,41 +292,12 @@ const targetHint = (task: WeeklyTask): string =>
   gap: 6px;
 }
 
-.emoji-btn {
+/* Tady je ikon třicet, takže se skládají do mřížky čtverců – zbytek appky
+   je má v řádku, kde by čtvercový tvar nedával smysl. */
+.emoji-grid .emoji-btn {
   aspect-ratio: 1;
+  padding: 0;
   font-size: 1.1rem;
-  line-height: 1;
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: inherit;
-  cursor: pointer;
-}
-
-.emoji-btn.on {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.chip {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  color: inherit;
-  padding: 6px 12px;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.chip.on {
-  border-color: var(--accent);
-  background: var(--accent-soft);
 }
 
 .library {

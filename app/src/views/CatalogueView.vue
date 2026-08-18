@@ -118,25 +118,6 @@ function isExcluded(id: string): boolean {
   opacity: 0.9;
 }
 
-.chip {
-  flex-shrink: 0;
-  padding: 7px 13px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-dim);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.chip.on {
-  background: var(--accent-soft);
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  color: var(--accent);
-}
-
 .ex {
   text-decoration: none;
   color: inherit;

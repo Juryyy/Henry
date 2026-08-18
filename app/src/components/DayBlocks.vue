@@ -193,34 +193,4 @@ const summary = (block: BlockConfig): string =>
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
-
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.chip,
-.emoji-btn {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  color: inherit;
-  padding: 6px 12px;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.emoji-btn {
-  border-radius: var(--r-sm);
-  padding: 6px 10px;
-  font-size: 1.05rem;
-  line-height: 1;
-}
-
-.chip.on,
-.emoji-btn.on {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
 </style>

@@ -371,6 +371,57 @@ ul, ol { margin: 0; padding-left: 1.25em; }
 }
 
 /* ---------------------------------------------------------------- */
+/*  Štítky k výběru                                                  */
+/* ---------------------------------------------------------------- */
+
+/*
+ * Kulaté tlačítko do řádku – filtr v katalogu, počet za týden u úkolu,
+ * zaměření a délka bloku. Zapnuté se pozná `.on`.
+ */
+.chip {
+  flex-shrink: 0;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chip.on {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+
+/* Řádek štítků, který se zalomí. Vodorovné rolování řeší `.scroll-x`. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Čtvercová varianta pro emoji – kulatý tvar by u ikon vypadal divně. */
+.emoji-btn {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: inherit;
+  padding: 6px 10px;
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.emoji-btn.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* ---------------------------------------------------------------- */
 /*  Segmentovaný přepínač                                            */
 /* ---------------------------------------------------------------- */
 

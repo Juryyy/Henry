@@ -53,8 +53,12 @@ na kolenou, plné prkno, nebo prkno s dotykem ramen – ale pokaždé to stejné
 Střídají se jen cviky, které jsou vzájemně zaměnitelné. Jinak by pestrost
 znamenala jen to, že jeden den cvičíš snadnou variantu a druhý těžkou.
 
-**46 cviků** s postupem, chybami, lehčí i těžší variantou a poznámkou, kdy to
-nedělat. Co se ti nelíbí nebo tě to bolí, vyřadíš a Henry to nahradí jiným.
+**46 cviků** s postupem, chybami, lehčí i těžší variantou, poznámkou, kdy to
+nedělat – a u každého **kreslenou ukázkou provedení**, která se hýbe. Není to
+video ani fotka: postavička je poskládaná ze souřadnic kloubů, takže celá sada
+váží jednotky kilobajtů, funguje offline a vypadá stejně v tmavém i světlém
+režimu. V seznamu se kreslí statická cílová poloha, v detailu a v přehrávači
+se rozhýbe (a kdo má v systému omezený pohyb, dostane obrázek bez animace). Co se ti nelíbí nebo tě to bolí, vyřadíš a Henry to nahradí jiným.
 Čtyři cviky s činkami jsou v katalogu kvůli týdennímu úkolu „posilovna“ –
 do domácích bloků se nepletou.
 
@@ -87,6 +91,12 @@ vrátit i to, co si sám rozbiješ.
 První účet si založíš při prvním otevření a tím se registrace zavře – kdo má
 přijít potom, dostane od tebe pozvánku. V nastavení vidíš přihlášená zařízení
 i nastavené klíče a kterékoli z nich můžeš odebrat.
+
+**Týdenní úkoly si poskládáš sám.** Posilovna, bazén, dlouhá procházka, vážení,
+dny bez alkoholu – u každého si nastavíš název, ikonu, kolikrát za týden,
+jestli se nesplněné přenáší, poznámku i pořadí. Výchozí pětice je jen návrh
+a nabídka hotových úkolů (pohyb, zdraví, návyky) je na dvě klepnutí. Vlastní
+úkol jde napsat ručně a k výchozí sadě se dá kdykoli vrátit.
 
 **Face ID místo hesla.** Účet se zakládá e-mailem a heslem, ale hned potom si
 v nastavení zapneš klíč (passkey) a dál se přihlašuješ obličejem nebo otiskem –
@@ -152,8 +162,8 @@ dokud tam žádný není.
 
 ```bash
 cd app
-npm test          # jednotkové testy výpočtů, plánu a slučování (112)
-npm run e2e       # e2e testy v prohlížeči (48) – projdou appku jako uživatel
+npm test          # výpočty, plán, slučování, úkoly a ukázky cviků (147)
+npm run e2e       # e2e testy v prohlížeči (51) – projdou appku jako uživatel
 npm run typecheck
 npm run build
 npm run screenshots  # přegeneruje obrázky v docs/screenshots

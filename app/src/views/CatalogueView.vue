@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { CATEGORY_LABELS, EXERCISES, LEVEL_LABELS, TAG_LABELS } from '@/data/exercises'
+import { getFigure } from '@/data/figures'
+import ExerciseFigure from '@/components/ExerciseFigure.vue'
 import type { Exercise, ExerciseCategory } from '@/lib/types'
 import { state } from '@/stores/app'
 
@@ -93,6 +95,8 @@ function isExcluded(id: string): boolean {
         <ul class="list-reset stack-sm">
           <li v-for="e in list" :key="e.id">
             <RouterLink :to="`/cviky/${e.id}`" class="row card card-tight ex" :class="{ off: isExcluded(e.id) }">
+              <!-- Statická poloha: čtyřicet animací v seznamu by telefon jen hřálo. -->
+              <span class="thumb" aria-hidden="true"><ExerciseFigure :figure="getFigure(e.id)" /></span>
               <span class="grow">
                 <span class="strong">{{ e.name }}</span>
                 <span class="tiny faint block">{{ e.target }}</span>
@@ -108,6 +112,12 @@ function isExcluded(id: string): boolean {
 </template>
 
 <style scoped>
+.thumb {
+  width: 62px;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
 .chip {
   flex-shrink: 0;
   padding: 7px 13px;

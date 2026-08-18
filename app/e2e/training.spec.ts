@@ -78,6 +78,21 @@ test.describe('cvičení', () => {
     }).toBe(0)
   })
 
+  test('u cviku je vidět ukázka provedení', async ({ page, context }) => {
+    await seed(context)
+    await page.goto('/#/cviky/kocka-velbloud')
+    await ready(page)
+
+    // Obrázek je SVG s popisem pro čtečku – ne dekorace, ale obsah.
+    const demo = page.getByRole('img', { name: /Vzpor klečmo/ })
+    await expect(demo).toBeVisible()
+
+    // V seznamu je u každého cviku náhled, ale bez animace.
+    await page.goto('/#/cviky')
+    await ready(page)
+    expect(await page.locator('.thumb svg').count()).toBeGreaterThan(10)
+  })
+
   test('vyřazený cvik zmizí z plánu', async ({ page, context }) => {
     await seed(context)
     await page.goto('/#/cviky/supine-hamstring-strap')

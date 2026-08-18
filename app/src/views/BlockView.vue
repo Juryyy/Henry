@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getExercise } from '@/data/exercises'
+import { getFigure } from '@/data/figures'
+import ExerciseFigure from '@/components/ExerciseFigure.vue'
 import { buildBlock, doseLabel } from '@/lib/plan'
 import { formatDuration } from '@/lib/date'
 import { buzz, useTimer } from '@/composables/useTimer'
@@ -44,6 +46,7 @@ const finished = computed(() => index.value >= plan.value.items.length)
 
 const timer = useTimer()
 
+const figure = computed(() => (exercise.value ? getFigure(exercise.value.id) : null))
 const isTimed = computed(() => exercise.value?.mode !== 'reps')
 const sidesCount = computed(() => (exercise.value?.mode === 'time_per_side' ? 2 : 1))
 
@@ -231,6 +234,10 @@ const setLabel = computed(() => {
           <p class="muted small" style="margin-top: 4px">{{ exercise.target }}</p>
         </div>
 
+        <!-- Ukázka běží i během pauzy: to je zrovna chvíle, kdy má člověk čas
+             se podívat, jestli to dělá dobře. -->
+        <div v-if="figure" class="demo"><ExerciseFigure :figure="figure" animated /></div>
+
         <div class="dose-card" :class="{ resting }">
           <div class="tiny faint">{{ resting ? 'Pauza' : setLabel }}</div>
           <div v-if="isTimed || resting" class="timer num">
@@ -308,6 +315,16 @@ const setLabel = computed(() => {
 </template>
 
 <style scoped>
+.demo {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 6px 10px;
+  max-width: 300px;
+  margin: 0 auto;
+  width: 100%;
+}
+
 .player {
   min-height: 100dvh;
   display: flex;

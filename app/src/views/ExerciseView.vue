@@ -2,12 +2,15 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { CATEGORY_LABELS, LEVEL_LABELS, TAG_LABELS, getExercise } from '@/data/exercises'
+import { getFigure } from '@/data/figures'
 import { state } from '@/stores/app'
+import ExerciseFigure from '@/components/ExerciseFigure.vue'
 
 const route = useRoute()
 const router = useRouter()
 
 const exercise = computed(() => getExercise(String(route.params.id)))
+const figure = computed(() => (exercise.value ? getFigure(exercise.value.id) : null))
 
 const excluded = computed(() => {
   const id = exercise.value?.id
@@ -52,6 +55,11 @@ const doseText = computed(() => {
         </div>
       </section>
 
+      <section v-if="figure" class="card demo">
+        <ExerciseFigure :figure="figure" animated />
+        <p class="tiny faint center" style="margin: 6px 0 0">Ukázka provedení</p>
+      </section>
+
       <section class="card">
         <div class="card-title">Postup</div>
         <ol class="steps">
@@ -94,6 +102,16 @@ const doseText = computed(() => {
 </template>
 
 <style scoped>
+.demo {
+  padding: 10px 12px 12px;
+}
+
+/* Ukázka nemá zabrat půl obrazovky – pod ní má být hned první krok postupu. */
+.demo :deep(.figure) {
+  max-width: 320px;
+  margin: 0 auto;
+}
+
 .steps {
   margin: 0;
   padding-left: 1.2em;

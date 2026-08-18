@@ -80,7 +80,7 @@ function toggleDone(slot: number): void {
           <li v-for="pItem in plan.items" :key="pItem.exerciseId">
             <RouterLink :to="`/cviky/${pItem.exerciseId}`" class="ex-link">
               <span class="thumb" aria-hidden="true">
-                <ExerciseFigure :figure="getFigure(pItem.exerciseId)" />
+                <ExerciseFigure :figure="getFigure(pItem.exerciseId)" :category="getExercise(pItem.exerciseId)?.category" />
               </span>
               <span class="grow">{{ getExercise(pItem.exerciseId)?.name ?? pItem.exerciseId }}</span>
               <span class="tiny faint">{{

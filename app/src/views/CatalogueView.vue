@@ -96,7 +96,7 @@ function isExcluded(id: string): boolean {
           <li v-for="e in list" :key="e.id">
             <RouterLink :to="`/cviky/${e.id}`" class="row card card-tight ex" :class="{ off: isExcluded(e.id) }">
               <!-- Statická poloha: čtyřicet animací v seznamu by telefon jen hřálo. -->
-              <span class="thumb" aria-hidden="true"><ExerciseFigure :figure="getFigure(e.id)" /></span>
+              <span class="thumb" aria-hidden="true"><ExerciseFigure :figure="getFigure(e.id)" :category="e.category" /></span>
               <span class="grow">
                 <span class="strong">{{ e.name }}</span>
                 <span class="tiny faint block">{{ e.target }}</span>

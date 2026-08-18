@@ -249,7 +249,7 @@ const setLabel = computed(() => {
 
         <!-- Ukázka běží i během pauzy: to je zrovna chvíle, kdy má člověk čas
              se podívat, jestli to dělá dobře. -->
-        <div v-if="figure" class="demo"><ExerciseFigure :figure="figure" animated /></div>
+        <div v-if="figure" class="demo"><ExerciseFigure :figure="figure" :category="exercise.category" animated /></div>
 
         <div class="dose-card" :class="{ resting }">
           <div class="tiny faint">{{ resting ? 'Pauza' : setLabel }}</div>

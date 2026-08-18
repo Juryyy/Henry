@@ -22,6 +22,8 @@ import type { Figure, Pose } from '@/lib/figure'
 
 /** Stoj, čelem doprava, ruce podél těla. */
 const STAND: Pose = {
+  // Čelem doprava, pohled vodorovně před sebe.
+  look: [1, 0],
   head: [46, 13],
   neck: [46, 22],
   hip: [46, 51],
@@ -34,6 +36,8 @@ const STAND: Pose = {
 
 /** Vleže na zádech, hlavou doleva, kolena pokrčená. */
 const SUPINE: Pose = {
+  // Na zádech: obličej míří ke stropu, ať se nepletl s lehem na břiše.
+  look: [0, -1],
   head: [20, 79],
   neck: [28, 81],
   hip: [50, 82],
@@ -54,6 +58,9 @@ const SUPINE_LONG: Pose = {
 
 /** Vleže na břiše. */
 const PRONE: Pose = {
+  // Na břiše: hlava otočená dopředu a k zemi. Kolmo dolů to být nemůže –
+  // nos by čouhal pod podlahu.
+  look: [-1, 0.35],
   head: [20, 82],
   neck: [28, 84],
   hip: [52, 85],
@@ -66,6 +73,7 @@ const PRONE: Pose = {
 
 /** Vzpor klečmo („na čtyřech"), čelem doprava. */
 const QUADRUPED: Pose = {
+  look: [0.4, 1],
   head: [22, 60],
   neck: [30, 62],
   hip: [52, 62],
@@ -81,6 +89,8 @@ const QUADRUPED: Pose = {
 
 /** Prkno na předloktí, hlavou doleva. */
 const PLANK: Pose = {
+  // V prkně se člověk dívá do země kousek před sebe.
+  look: [-0.6, 1],
   head: [20, 66],
   neck: [28, 69],
   hip: [54, 78],
@@ -93,6 +103,7 @@ const PLANK: Pose = {
 
 /** Sed s nataženýma nohama, trup vzpřímený. */
 const SEATED: Pose = {
+  look: [1, 0],
   head: [30, 51],
   neck: [30, 60],
   hip: [30, 84],
@@ -105,6 +116,7 @@ const SEATED: Pose = {
 
 /** Klek na jedné, druhá noha vepředu (výpad v kleku). */
 const HALF_KNEEL: Pose = {
+  look: [1, 0],
   head: [46, 30],
   neck: [46, 38],
   hip: [46, 62],
@@ -120,6 +132,7 @@ const HALF_KNEEL: Pose = {
 
 /** Předklon z kyčlí – pánev dozadu, záda rovná. */
 const HINGE: Pose = {
+  look: [0.8, 0.6],
   head: [68, 34],
   neck: [60, 39],
   hip: [40, 53],
@@ -132,6 +145,7 @@ const HINGE: Pose = {
 
 /** Hluboký předklon s kulatými zády. */
 const FOLD: Pose = {
+  look: [0.3, 1],
   head: [70, 62],
   neck: [62, 56],
   mid: [56, 42],
@@ -145,6 +159,7 @@ const FOLD: Pose = {
 
 /** Dřep. */
 const SQUAT: Pose = {
+  look: [1, 0.2],
   head: [56, 33],
   neck: [52, 41],
   hip: [40, 66],
@@ -157,6 +172,8 @@ const SQUAT: Pose = {
 
 /** Stoj čelem k divákovi – pro cviky, které z boku nejsou poznat. */
 const FRONT: Pose = {
+  // Čelem k divákovi – nos by byl jen skvrna, tak se nekreslí.
+  look: [0, 0],
   head: [50, 13],
   neck: [50, 22],
   hip: [50, 51],
@@ -201,6 +218,7 @@ export const FIGURES: Record<string, Figure> = {
       },
       {
         ...SUPINE,
+        look: [0.7, -0.7],
         head: [22, 71],
         neck: [30, 76],
         elbow: [34, 82],
@@ -289,6 +307,7 @@ export const FIGURES: Record<string, Figure> = {
     alt: 'Bok na zemi, opora o loket a kolena. Pánev se zvedne tak, aby kolena, boky a ramena tvořily přímku.',
     frames: [
       {
+        look: [0, 0],
         head: [22, 66],
         neck: [30, 70],
         hip: [56, 82],
@@ -301,6 +320,7 @@ export const FIGURES: Record<string, Figure> = {
         handFar: [36, 50],
       },
       {
+        look: [0, 0],
         head: [22, 60],
         neck: [30, 64],
         hip: [56, 76],
@@ -319,6 +339,7 @@ export const FIGURES: Record<string, Figure> = {
     alt: 'Boční prkno s nataženýma nohama – opora o loket a hranu chodidla, horní ruka míří vzhůru.',
     frames: [
       {
+        look: [0, 0],
         head: [22, 64],
         neck: [30, 68],
         hip: [56, 80],
@@ -331,6 +352,7 @@ export const FIGURES: Record<string, Figure> = {
         handFar: [36, 48],
       },
       {
+        look: [0, 0],
         head: [22, 58],
         neck: [30, 62],
         hip: [56, 74],
@@ -349,6 +371,7 @@ export const FIGURES: Record<string, Figure> = {
     alt: 'Z bočního prkna se horní paže provlékne pod tělem a zase vrátí vzhůru.',
     frames: [
       {
+        look: [0, 0],
         head: [22, 58],
         neck: [30, 62],
         hip: [56, 74],
@@ -361,6 +384,7 @@ export const FIGURES: Record<string, Figure> = {
         handFar: [36, 42],
       },
       {
+        look: [0, 0],
         head: [22, 60],
         neck: [30, 64],
         hip: [56, 74],
@@ -381,6 +405,8 @@ export const FIGURES: Record<string, Figure> = {
       { ...PRONE, elbow: [30, 86], hand: [18, 86] },
       {
         ...PRONE,
+        // Zvednutá hlava: pohled dopředu a dolů, ne kolmo do země jako v lehu.
+        look: [-0.8, 0.5],
         head: [17, 68],
         neck: [26, 75],
         mid: [39, 84],
@@ -397,7 +423,7 @@ export const FIGURES: Record<string, Figure> = {
     alt: 'Leh na zádech s pokrčenými koleny, ruce u hlavy. Od země se odlepí jen lopatky.',
     frames: [
       { ...SUPINE, elbow: [30, 80], hand: [24, 74] },
-      { ...SUPINE, head: [28, 68], neck: [34, 73], elbow: [32, 72], hand: [27, 66] },
+      { ...SUPINE, look: [0.6, -0.8], head: [28, 68], neck: [34, 73], elbow: [32, 72], hand: [27, 66] },
     ],
   },
 
@@ -407,6 +433,8 @@ export const FIGURES: Record<string, Figure> = {
       { ...SUPINE, elbow: [30, 80], hand: [24, 74] },
       {
         ...SUPINE,
+        // V sedu se člověk dívá dopředu na kolena, ne do stropu jako v lehu.
+        look: [1, 0.3],
         head: [48, 49],
         neck: [48, 58],
         hip: [50, 82],
@@ -422,6 +450,8 @@ export const FIGURES: Record<string, Figure> = {
       { ...SUPINE_LONG, elbow: [22, 80], hand: [12, 80] },
       {
         ...SUPINE_LONG,
+        // Pohled na špičky – v hollow holdu se brada přitahuje k hrudi.
+        look: [1, -0.3],
         head: [24, 68],
         neck: [32, 73],
         mid: [42, 83],
@@ -469,6 +499,8 @@ export const FIGURES: Record<string, Figure> = {
     alt: 'Leh na lavici, chodidla na zemi. Jednoručky se tlačí od hrudníku vzhůru.',
     frames: [
       {
+        // Leh na lavici: obličej ke stropu, jinak by to vypadalo jako klik.
+        look: [0, -1],
         head: [26, 62],
         neck: [34, 65],
         hip: [58, 68],
@@ -480,6 +512,7 @@ export const FIGURES: Record<string, Figure> = {
         prop: { kind: 'bench', y: 70 },
       },
       {
+        look: [0, -1],
         head: [26, 62],
         neck: [34, 65],
         hip: [58, 68],
@@ -539,6 +572,8 @@ export const FIGURES: Record<string, Figure> = {
       },
       {
         ...SEATED,
+        // Kolena se překlopila na druhou stranu a trup se otočil s nimi.
+        look: [-1, 0],
         head: [26, 51],
         neck: [28, 60],
         knee: [10, 76],
@@ -559,6 +594,8 @@ export const FIGURES: Record<string, Figure> = {
       QUADRUPED,
       {
         ...QUADRUPED,
+        // Rameno i spánek na zemi, pohled podél provlečené paže.
+        look: [0.9, 0.4],
         head: [26, 80],
         neck: [32, 74],
         elbow: [42, 84],
@@ -572,6 +609,8 @@ export const FIGURES: Record<string, Figure> = {
     durationMs: 3600,
     frames: [
       {
+        // Široký postoj se z profilu neukáže – tenhle cvik se kreslí zepředu.
+        look: [0, 0],
         head: [50, 26],
         neck: [50, 34],
         hip: [50, 58],
@@ -585,6 +624,7 @@ export const FIGURES: Record<string, Figure> = {
         toeFar: [22, 88],
       },
       {
+        look: [0, 0],
         head: [64, 40],
         neck: [64, 48],
         hip: [66, 70],
@@ -796,7 +836,15 @@ export const FIGURES: Record<string, Figure> = {
     durationMs: 3800,
     frames: [
       SEATED,
-      { ...SEATED, head: [46, 66], neck: [40, 70], mid: [34, 76], elbow: [46, 76], hand: [60, 82] },
+      {
+        ...SEATED,
+        look: [0.6, 0.8],
+        head: [46, 66],
+        neck: [40, 70],
+        mid: [34, 76],
+        elbow: [46, 76],
+        hand: [60, 82],
+      },
     ],
   },
 
@@ -804,6 +852,7 @@ export const FIGURES: Record<string, Figure> = {
     alt: 'Pata na vyvýšenině, koleno skoro natažené. Předklon jde z kyčlí, záda zůstávají rovná.',
     frames: [
       {
+        look: [1, 0],
         head: [40, 26],
         neck: [40, 34],
         hip: [40, 56],
@@ -818,6 +867,8 @@ export const FIGURES: Record<string, Figure> = {
         prop: { kind: 'box', x: 64, y: 72, w: 22 },
       },
       {
+        // Předklon: pohled dopředu a dolů, ne vodorovně jako ve stoji.
+        look: [0.8, 0.5],
         head: [62, 40],
         neck: [55, 44],
         hip: [38, 56],
@@ -838,6 +889,7 @@ export const FIGURES: Record<string, Figure> = {
     alt: 'Ruce o zeď, zadní noha natažená s patou na zemi. Tah je v lýtku zadní nohy.',
     frames: [
       {
+        look: [1, 0],
         head: [44, 28],
         neck: [46, 36],
         hip: [38, 58],
@@ -852,6 +904,7 @@ export const FIGURES: Record<string, Figure> = {
         prop: { kind: 'wall', x: 78 },
       },
       {
+        look: [1, 0],
         head: [48, 30],
         neck: [50, 38],
         hip: [40, 58],
@@ -874,6 +927,8 @@ export const FIGURES: Record<string, Figure> = {
     frames: [
       { ...QUADRUPED, hip: [58, 68], head: [24, 64], neck: [32, 66] },
       {
+        // Čelo na zemi, obličej dolů.
+        look: [-0.3, 1],
         head: [26, 76],
         neck: [34, 79],
         mid: [46, 74],
@@ -1114,6 +1169,8 @@ export const FIGURES: Record<string, Figure> = {
     frames: [
       { ...STAND, head: [34, 13], neck: [34, 22], hip: [34, 51], knee: [34, 69], ankle: [34, 86], toe: [41, 88], elbow: [34, 36], hand: [34, 49], prop: { kind: 'box', x: 62, y: 60, w: 28 } },
       {
+        // Vzpor: pohled do země pod sebe.
+        look: [0.3, 1],
         head: [72, 46],
         neck: [64, 50],
         hip: [40, 62],

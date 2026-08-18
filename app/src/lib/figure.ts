@@ -38,6 +38,19 @@ export interface Pose {
   ankleFar?: Point
   toeFar?: Point
   /**
+   * Kterým **směrem** míří obličej – ne bod, ale vektor od středu hlavy.
+   * Bez něj se nedá poznat leh na zádech od lehu na břiše: krk míří v obou
+   * případech stejně.
+   *
+   * Schválně směr, ne cíl: základní polohy se dědí přes `...SUPINE` a hlava
+   * se přitom posouvá. Cíl by se s ní rozešel a nos by ukazoval do prázdna,
+   * kdežto směr platí dál. `[0, 0]` znamená pohled na diváka – nos se nekreslí.
+   *
+   * Délka má být zhruba jednotková: kratší vektor znamená „natočený spíš
+   * k divákovi" a podle toho se rozloží objem trupu.
+   */
+  look?: Point
+  /**
    * Střed páteře. Trup se kreslí jako křivka s tímhle bodem jako řídicím,
    * takže jde ukázat kulatá i prohnutá záda – bez toho by kočka a velbloud
    * vypadaly stejně. Když chybí, dosadí se střed mezi krkem a kyčlí, což
@@ -91,7 +104,89 @@ function lerpPoint(a: Point, b: Point, t: number): Point {
 }
 
 const JOINTS = ['head', 'neck', 'hip', 'elbow', 'hand', 'knee', 'ankle', 'toe'] as const
-const OPTIONAL_JOINTS = ['elbowFar', 'handFar', 'kneeFar', 'ankleFar', 'toeFar', 'mid'] as const
+const OPTIONAL_JOINTS = ['elbowFar', 'handFar', 'kneeFar', 'ankleFar', 'toeFar', 'mid', 'look'] as const
+
+/** Poloměr hlavy. Kreslí se s ním, a počítá se s ním i výřez. */
+export const HEAD_R = 5.2
+/** Jak daleko nos vyčnívá **za okraj** hlavy. */
+const NOSE = 4.6
+/** Jak hluboký je trup. Zhruba jako hlava – piktogram, ne anatomie. */
+export const TORSO_DEPTH = 5
+
+/**
+ * Kam se postavička dívá. Chybějící směr se dopočítá prodloužením krku –
+ * to sedí tam, kde krk vodorovný není (podpor, vzpor klečmo, předklon).
+ * `[0, 0]` znamená čelem k divákovi.
+ */
+function lookVector(pose: Pose): Point {
+  return pose.look ?? [pose.head[0] - pose.neck[0], pose.head[1] - pose.neck[1]]
+}
+
+/** Jednotkový vektor, nebo `null` když je moc krátký na to, aby něco znamenal. */
+function unit(v: Point): Point | null {
+  const length = Math.hypot(v[0], v[1])
+  return length < 0.01 ? null : [v[0] / length, v[1] / length]
+}
+
+/**
+ * Nos jako úsečka od okraje hlavy ven, nebo `null` u pohledu na diváka –
+ * tam by z nosu byla jen skvrna uprostřed obličeje.
+ *
+ * Kreslí se od okraje, ne ze středu: čárka přes celou hlavu vypadá jako
+ * škrtnutí, kdežto krátký hrot z obrysu je poznat i v seznamu na 60 pixelech.
+ */
+export function faceLine(pose: Pose): [Point, Point] | null {
+  const dir = unit(lookVector(pose))
+  if (!dir) return null
+  const [x, y] = pose.head
+  return [
+    [x + dir[0] * (HEAD_R - 1), y + dir[1] * (HEAD_R - 1)],
+    [x + dir[0] * (HEAD_R + NOSE), y + dir[1] * (HEAD_R + NOSE)],
+  ]
+}
+
+/**
+ * Kam od páteře sahá trup – hranice na obě strany, měřené podél kolmice
+ * k páteři.
+ *
+ * Ze dvou kolmic se bere ta, která míří stejně jako pohled: obličej a břicho
+ * jsou na stejné straně těla v každé poloze, ve stoji i v lehu. Objem těla se
+ * pak celý přesune dopředu a páteř zůstane na jeho zadní hraně – a přesně
+ * z toho je poznat, kde jsou záda.
+ *
+ * Jak moc se přesune, závisí na tom, jak je postavička natočená. Z profilu
+ * naplno, čelem k divákovi vůbec (tam se rozloží souměrně – zepředu žádná
+ * strana zad vidět není a tvrdit opak by bylo lež). Mezi tím plynule, aby se
+ * trup při otočce nepřeklopil skokem: u sedu 90/90 se kolena překlápějí přes
+ * střed, takže tudy postavička opravdu projde.
+ *
+ * `null` jen u pózy bez délky páteře, kde není co odsazovat.
+ */
+export function torsoEdges(pose: Pose): { lo: number; hi: number; normal: Point } | null {
+  const spine = unit([pose.hip[0] - pose.neck[0], pose.hip[1] - pose.neck[1]])
+  if (!spine) return null
+  const normal: Point = [-spine[1], spine[0]]
+  // Nezkrácený vektor schválně. Jeho délka nese to podstatné: čím kratší,
+  // tím víc je postavička natočená k divákovi. Po zkrácení na jednotku by
+  // z toho zbylo jen znaménko a trup by se při otočce překlopil skokem –
+  // u sedu 90/90, kde se kolena překlápějí přes střed, by to bylo vidět.
+  const look = lookVector(pose)
+  const turn = normal[0] * look[0] + normal[1] * look[1]
+  // Zesíleno: obličej se často dívá jinam než břicho (v lehu na břiše míří
+  // hlava dopředu, ale břicho pořád dolů). Bez toho by z takové polohy vyšel
+  // poloviční přesun, tedy nic. Přes střed to pořád projde plynule.
+  const shift = Math.max(-1, Math.min(1, turn * 2.5))
+  const center = (TORSO_DEPTH / 2) * shift
+  return { lo: center - TORSO_DEPTH / 2, hi: center + TORSO_DEPTH / 2, normal }
+}
+
+/**
+ * Konec nosu, nebo `null` u pohledu na diváka. Používá se hlavně na rámování –
+ * kdyby se nos počítal jen při kreslení, u zakloněné hlavy by přečuhoval ven.
+ */
+export function faceTarget(pose: Pose): Point | null {
+  return faceLine(pose)?.[1] ?? null
+}
 
 /** Řídicí bod trupu. Bez vlastního je to střed, tedy rovná záda. */
 export function spineControl(pose: Pose): Point {
@@ -120,10 +215,18 @@ export function poseAt(frames: Pose[], phase: number): Pose {
     out[joint] = lerpPoint(from[joint], to[joint], t)
   }
   for (const joint of OPTIONAL_JOINTS) {
-    // Páteř je zvláštní případ: chybějící řídicí bod znamená rovná záda,
-    // ne „žádná páteř". Dopočítá se, jinak by se záda mezi pózami narovnala skokem.
+    // Páteř a pohled jsou zvláštní případy: když chybí, neznamená to „nic",
+    // ale konkrétní výchozí hodnotu. Dopočítá se, jinak by se záda mezi
+    // pózami narovnala skokem a hlava by se otočila trhnutím.
     if (joint === 'mid') {
       if (from.mid || to.mid) out.mid = lerpPoint(spineControl(from), spineControl(to), t)
+      continue
+    }
+    if (joint === 'look') {
+      // Směry se míchají přímo – jsou to vektory, ne body na plátně.
+      const a = from.look ?? [from.head[0] - from.neck[0], from.head[1] - from.neck[1]]
+      const b = to.look ?? [to.head[0] - to.neck[0], to.head[1] - to.neck[1]]
+      out.look = lerpPoint(a, b, t)
       continue
     }
     const a = from[joint]
@@ -140,8 +243,9 @@ export function poseAt(frames: Pose[], phase: number): Pose {
 /*  Rámování                                                           */
 /* ------------------------------------------------------------------ */
 
-/** Poloměr hlavy. Musí se do výřezu vejít celá. */
-const HEAD_R = 6
+/** Kolik místa si hlava ve výřezu ukousne. O chlup víc než poloměr, ať se
+ *  neotírá o okraj. */
+const HEAD_BOX = HEAD_R + 0.8
 /** Volný prostor kolem postavičky. */
 const PADDING = 5
 /** Poměr stran obrázku. Na kartu se hodí ležatý. */
@@ -169,7 +273,7 @@ export function fitView(frames: Pose[]): [number, number, number, number] {
   }
 
   for (const pose of frames) {
-    include(pose.head[0], pose.head[1], HEAD_R)
+    include(pose.head[0], pose.head[1], HEAD_BOX)
     for (const joint of JOINTS) {
       if (joint === 'head') continue
       include(pose[joint][0], pose[joint][1])
@@ -177,6 +281,20 @@ export function fitView(frames: Pose[]): [number, number, number, number] {
     for (const joint of OPTIONAL_JOINTS) {
       const point = pose[joint]
       if (point) include(point[0], point[1])
+    }
+    const face = faceTarget(pose)
+    if (face) include(face[0], face[1])
+    // Trup je odsazený od páteře, takže leze z obalu ven – typicky u lehu
+    // na zádech, kde míří vzhůru.
+    const edges = torsoEdges(pose)
+    if (edges) {
+      const control = spineControl(pose)
+      for (const depth of [edges.lo, edges.hi]) {
+        const [bx, by] = [edges.normal[0] * depth, edges.normal[1] * depth]
+        include(pose.neck[0] + bx, pose.neck[1] + by)
+        include(pose.hip[0] + bx, pose.hip[1] + by)
+        include(control[0] + bx, control[1] + by)
+      }
     }
     const prop = pose.prop
     if (prop?.kind === 'wall') include(prop.x, GROUND_Y)

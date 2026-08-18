@@ -56,7 +56,7 @@ const doseText = computed(() => {
       </section>
 
       <section v-if="figure" class="card demo">
-        <ExerciseFigure :figure="figure" animated />
+        <ExerciseFigure :figure="figure" :category="exercise.category" animated />
         <p class="tiny faint center" style="margin: 6px 0 0">Ukázka provedení</p>
       </section>
 

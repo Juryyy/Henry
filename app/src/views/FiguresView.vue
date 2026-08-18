@@ -39,8 +39,8 @@ const items = EXERCISES.map((exercise) => ({
     <ul class="list-reset grid">
       <li v-for="{ exercise, figure } in items" :key="exercise.id" class="card cell">
         <div class="pair">
-          <ExerciseFigure :figure="figure" />
-          <ExerciseFigure :figure="figure" animated />
+          <ExerciseFigure :figure="figure" :category="exercise.category" />
+          <ExerciseFigure :figure="figure" :category="exercise.category" animated />
         </div>
         <div class="small strong">{{ exercise.name }}</div>
         <div class="tiny faint mono">{{ exercise.id }}</div>

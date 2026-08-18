@@ -43,6 +43,21 @@
   --violet: #a78bfa;
   --violet-soft: rgba(167, 139, 250, 0.14);
 
+  /*
+   * Barvy podle toho, na co cvik je. Používají se u kreslených ukázek, aby
+   * bylo na první pohled poznat, jestli si člověk protahuje, nebo posiluje.
+   * Nesou informaci navíc, ne jedinou – název skupiny je vždycky vedle nich.
+   *
+   * Jasy jsou schválně různé, ne jen odstíny: pět barev o stejném jasu se
+   * barvoslepému slije. Ověřeno validátorem palety pro sousední dvojice
+   * (nejhorší dvojice síla↔kardio: ΔE 9,7 pro protanopii, 15,1 pro běžné vidění).
+   */
+  --fig-rozhybani: #5294f6;
+  --fig-core: #30a34d;
+  --fig-protazeni: #9f7deb;
+  --fig-sila: #a56300;
+  --fig-kardio: #e76761;
+
   /* --- geometrie ------------------------------------------------- */
   --r-sm: 10px;
   --r: 16px;
@@ -96,6 +111,13 @@
     --info-soft: rgba(37, 99, 235, 0.09);
     --violet: #7c3aed;
     --violet-soft: rgba(124, 58, 237, 0.09);
+
+    /* Na bílém povrchu musí být tmavší – vlastní sada, ne ztmavená tamta. */
+    --fig-rozhybani: #0046b4;
+    --fig-core: #006800;
+    --fig-protazeni: #7040c0;
+    --fig-sila: #853600;
+    --fig-kardio: #ce3537;
 
     --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.07);
     --shadow: 0 1px 3px rgba(15, 23, 42, 0.07), 0 12px 28px rgba(15, 23, 42, 0.06);

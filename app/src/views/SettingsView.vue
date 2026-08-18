@@ -537,18 +537,14 @@ const confirmReset = ref(false)
         </div>
 
         <div class="stack-sm">
+          <!-- Popisky se berou z rozvržení dne. Kdyby tu zůstalo natvrdo
+               „Ráno / Poledne / Večer", přejmenovaný blok by měl v nastavení
+               dvě různá jména. Vypnuté bloky se nepřipomínají, takže se tu
+               ani neukazují. -->
           <div class="grid3">
-            <div class="field">
-              <label for="t0">Ráno</label>
-              <input id="t0" v-model="s.notifications.blockTimes[0]" type="time" />
-            </div>
-            <div class="field">
-              <label for="t1">Poledne</label>
-              <input id="t1" v-model="s.notifications.blockTimes[1]" type="time" />
-            </div>
-            <div class="field">
-              <label for="t2">Večer</label>
-              <input id="t2" v-model="s.notifications.blockTimes[2]" type="time" />
+            <div v-for="block in s.exercise.blocks.filter((b) => b.enabled)" :key="block.slot" class="field">
+              <label :for="`t${block.slot}`">{{ block.emoji }} {{ block.title }}</label>
+              <input :id="`t${block.slot}`" v-model="s.notifications.blockTimes[block.slot]" type="time" />
             </div>
           </div>
 

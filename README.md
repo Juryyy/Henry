@@ -170,7 +170,7 @@ dokud tam žádný není.
 ```bash
 cd app
 npm test          # výpočty, plán, slučování, úkoly a ukázky cviků (152)
-npm run e2e       # e2e testy v prohlížeči (54) – projdou appku jako uživatel
+npm run e2e       # e2e testy v prohlížeči (55) – projdou appku jako uživatel
 npm run typecheck
 npm run build
 npm run screenshots  # přegeneruje obrázky v docs/screenshots

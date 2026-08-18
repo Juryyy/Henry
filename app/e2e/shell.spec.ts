@@ -221,6 +221,24 @@ test.describe('nastavení', () => {
     await expect(page.getByText('Ráno', { exact: true })).toHaveCount(0)
   })
 
+  test('čas připomínky nese název bloku, ne natvrdo denní dobu', async ({ page, context }) => {
+    await seed(context)
+    await page.goto('/#/nastaveni')
+    await ready(page)
+
+    await page.getByRole('button', { name: 'Upravit blok Poledne' }).click()
+    await page.getByLabel('Název').fill('Oběd')
+    await page.getByLabel('Název').blur()
+
+    // Přejmenovaný blok nesmí mít v nastavení dvě různá jména.
+    await expect(page.getByRole('textbox', { name: '💪 Oběd' })).toBeVisible()
+    await expect(page.getByRole('textbox', { name: /Poledne/ })).toHaveCount(0)
+
+    // Vypnutý blok se nepřipomíná, takže se jeho čas ani nenabízí.
+    await page.getByRole('checkbox', { name: /Ráno/ }).uncheck()
+    await expect(page.getByRole('textbox', { name: /Ráno/ })).toHaveCount(0)
+  })
+
   test('poslední zapnutý blok vypnout nejde', async ({ page, context }) => {
     await seed(context)
     await page.goto('/#/nastaveni')

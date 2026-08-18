@@ -69,3 +69,37 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  image:
+    name: Obraz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Sestavení obrazu je jediné místo, kde se ověří, že appka i server jdou
+      # přeložit dohromady a že Dockerfile sedí. Nikam se nepushuje.
+      - name: Build obrazu
+        run: docker build -t henry:ci .
+
+      - name: Server v obrazu naběhne a servíruje appku
+        run: |
+          docker run -d --name henry-ci -p 8099:8080 \
+            -e VAPID_PUBLIC_KEY=BPS6uSuDyUO-KuTrjKpCZ7SQAeliy0UcX2E7yO1DS2Z0n3vSjwBiUOgZPpfRHkV9Qrkv9rLSoK-p4NNwU4BLZVg \
+            -e VAPID_PRIVATE_KEY=fEHGWtbywMmEOoCwvrXXOBcgz12PbgkunlLqumJ_ifY \
+            -e VAPID_SUBJECT=mailto:ci@example.com \
+            -e SECURE_COOKIES=off -e SCHEDULER=off \
+            henry:ci
+
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8099/api/health > /dev/null && break
+            sleep 1
+          done
+
+          curl -sf http://127.0.0.1:8099/api/health | grep -q '"ok":true'
+          curl -sf http://127.0.0.1:8099/ | grep -q '<title>Henry</title>'
+          # Bez přihlášení se k datům nikdo nedostane.
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8099/api/state)" = "401"
+
+      - name: Logy při chybě
+        if: failure()
+        run: docker logs henry-ci

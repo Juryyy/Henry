@@ -1,0 +1,14 @@
+# Do obrazu nepatří nic, co se v něm staví znovu, ani nic, co je jen tvoje.
+**/node_modules
+**/dist
+**/.vite
+app/test-results
+app/playwright-report
+app/blob-report
+data
+server/data
+.env
+.git
+.github
+docs
+*.md

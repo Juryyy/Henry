@@ -18,6 +18,23 @@ test.describe('týdenní úkoly', () => {
 })
 
 test.describe('den odpočinku a poznámka', () => {
+  test('na pokroku je vidět, jak úkoly dopadaly po týdnech', async ({ page, context }) => {
+    await seed(context)
+    await page.goto('/#/')
+    await ready(page)
+    await page.getByRole('button', { name: 'Splnit Posilovna' }).click()
+
+    await page.goto('/#/pokrok')
+    await ready(page)
+
+    // Bez tohohle se úkol dal nastavit i odškrtávat, ale nikde nebylo vidět,
+    // jestli v posilovně opravdu jsi, nebo si to jen třetí měsíc plánuješ.
+    const card = page.locator('section.card').filter({ hasText: 'Týdenní úkoly' })
+    await expect(card).toBeVisible()
+    await expect(card.getByText('Posilovna')).toBeVisible()
+    await expect(card.getByRole('img', { name: /Posilovna: splněno v 1 z/ })).toBeVisible()
+  })
+
   test('volno se uloží a promítne do hlavičky', async ({ page, context }) => {
     await seed(context)
     await page.goto('/#/')

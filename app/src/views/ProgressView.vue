@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { activeBlocks } from '@/lib/plan'
+import { taskHistory, type TaskHistory } from '@/lib/engine'
 import LineChart from '@/components/LineChart.vue'
 import { formatDayShort, relativeDayLabel } from '@/lib/date'
 import { dec, num, parseNumber } from '@/lib/format'
@@ -90,6 +91,16 @@ const averageBlockMinutes = computed(() => {
   return blocks.reduce((sum, b) => sum + b.minutes, 0) / blocks.length
 })
 const totalMinutes = computed(() => Math.round(totalBlocks.value * averageBlockMinutes.value))
+
+/* Týdenní úkoly ---------------------------------------------------------- */
+
+/** Kolik týdnů zpátky se ukazuje. Osm je čtvrt roku bez rolování. */
+const WEEKS_BACK = 8
+
+const tasks = computed(() => taskHistory(state, WEEKS_BACK))
+
+const taskLabel = (row: TaskHistory): string =>
+  `${row.task.title}: splněno v ${row.metCount} z ${row.weeks.length} týdnů, celkem ${row.total}×`
 
 /* Milníky --------------------------------------------------------------- */
 
@@ -188,6 +199,36 @@ function toeTouchLabel(cm: number): string {
         </div>
       </section>
 
+      <!-- Týdenní úkoly ----------------------------------------------- -->
+      <section v-if="tasks.length" class="card">
+        <div class="row-between" style="margin-bottom: 4px">
+          <div class="card-title" style="margin: 0">Týdenní úkoly</div>
+          <span class="tiny faint">posledních {{ WEEKS_BACK }} týdnů</span>
+        </div>
+        <p class="tiny faint" style="margin: 0 0 12px">
+          Každý čtvereček je týden, zleva nejstarší. Plný znamená splněno, poloviční částečně.
+        </p>
+        <ul class="list-reset stack-sm">
+          <li v-for="row in tasks" :key="row.task.id">
+            <div class="row-between">
+              <span class="small">
+                <span aria-hidden="true">{{ row.task.emoji }}</span> {{ row.task.title }}
+              </span>
+              <span class="tiny faint">{{ row.metCount }} / {{ row.weeks.length }} týdnů</span>
+            </div>
+            <div class="weeks" role="img" :aria-label="taskLabel(row)">
+              <span
+                v-for="w in row.weeks"
+                :key="w.week"
+                class="wk"
+                :class="{ met: w.met, part: !w.met && w.done > 0 }"
+                :title="`${w.week}: ${w.done} z ${w.target}`"
+              />
+            </div>
+          </li>
+        </ul>
+      </section>
+
       <!-- Milníky ----------------------------------------------------- -->
       <section class="card">
         <div class="row-between" style="margin-bottom: 12px">
@@ -276,6 +317,29 @@ function toeTouchLabel(cm: number): string {
 </template>
 
 <style scoped>
+/* Řádek týdnů u úkolu. Čtverečky, ne graf – jde o „stalo se / nestalo se". */
+.weeks {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.wk {
+  flex: 1;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--surface-3);
+}
+
+.wk.met {
+  background: var(--accent);
+}
+
+/* Částečně splněný týden: půlka výšky, ať se nepočítá jako úspěch. */
+.wk.part {
+  background: linear-gradient(to top, var(--accent) 50%, var(--surface-3) 50%);
+}
+
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }

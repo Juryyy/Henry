@@ -70,6 +70,21 @@ const routes: RouteRecordRaw[] = [
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
+/**
+ * Kontaktní list ukázek u cviků. Pózy se dají posoudit jenom okem, takže
+ * po jejich úpravě je potřeba je vidět všechny vedle sebe – klikat se přes
+ * šestačtyřicet detailů nedá. Do produkčního buildu se tahle obrazovka
+ * nedostane: `import.meta.env.DEV` vyhodí i ten dynamický import.
+ */
+if (import.meta.env.DEV) {
+  routes.push({
+    path: '/figury',
+    name: 'figury',
+    component: () => import('./views/FiguresView.vue'),
+    meta: { title: 'Ukázky' },
+  })
+}
+
 export const router = createRouter({
   history: createWebHashHistory(),
   routes,

@@ -86,7 +86,10 @@ ignoruješ, na dva dny se odmlčí.
 **Kroky z Apple Health** přes Zkratku, která je jednou denně pošle na server.
 Nebo si je zapíšeš ručně, appka funguje i tak.
 
-**Pokrok** – váha, obvod pasu, kolik centimetrů ti chybí na zem, výdrž v prkně.
+**Pokrok** – váha, obvod pasu, kolik centimetrů ti chybí na zem, výdrž v prkně
+a **historie týdenních úkolů**: u každého řádek čtverečků za posledních osm
+týdnů, ať je vidět, jestli v posilovně opravdu jsi, nebo si to jen třetí měsíc
+plánuješ.
 
 **Účet a synchronizace mezi zařízeními.** Přihlašuješ se **Face ID / Touch ID**
 (heslo zůstává jako záchrana); data se drží na serveru, takže výměnu telefonu
@@ -169,8 +172,8 @@ dokud tam žádný není.
 
 ```bash
 cd app
-npm test          # výpočty, plán, slučování, úkoly a ukázky cviků (153)
-npm run e2e       # e2e testy v prohlížeči (56) – projdou appku jako uživatel
+npm test          # výpočty, plán, slučování, úkoly a ukázky cviků (155)
+npm run e2e       # e2e testy v prohlížeči (57) – projdou appku jako uživatel
 npm run typecheck
 npm run build
 npm run screenshots  # přegeneruje obrázky v docs/screenshots
@@ -180,6 +183,10 @@ npm test          # účty, klíče, HTTP rozhraní, plánovač, slučování da
 npm run typecheck
 npm run build
 ```
+
+Při úpravě ukázek u cviků se hodí `/#/figury` na vývojovém serveru – kontaktní
+list všech šestačtyřiceti postaviček vedle sebe, staticky i rozhýbaně. Do
+produkčního buildu se ta obrazovka nedostane.
 
 E2E testy jedou proti produkčnímu buildu v mobilním rozlišení a kontrolují
 celé toky: přihlášení heslem i klíčem, úvodního průvodce, zápis kroků, průchod blokem cvičení

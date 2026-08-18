@@ -434,6 +434,60 @@ export function summarizeTasks(state: AppState, week: WeekKey): TaskSummary[] {
     })
 }
 
+/**
+ * Jak si člověk stojí s jedním úkolem v jednom týdnu.
+ *
+ * `target` je čistý týdenní cíl bez přeneseného dluhu – tady jde o to,
+ * jestli se v tom týdnu udělalo, co se mělo, ne o vyrovnávání starých
+ * restů. Dluh patří do knihy, ne do historie.
+ */
+export interface TaskWeek {
+  week: WeekKey
+  done: number
+  target: number
+  met: boolean
+}
+
+export interface TaskHistory {
+  task: WeeklyTask
+  weeks: TaskWeek[]
+  /** Kolik z těch týdnů vyšlo. */
+  metCount: number
+  /** Celkem odškrtnutí za sledované období. */
+  total: number
+}
+
+/**
+ * Historie zapnutých úkolů za posledních `weeks` týdnů, od nejstaršího.
+ *
+ * Bez tohohle se dá úkol nastavit a odškrtávat, ale nikde není vidět, jestli
+ * v posilovně opravdu jsi, nebo si to jen třetí měsíc plánuješ.
+ */
+export function taskHistory(state: AppState, weeks = 8, today: DateKey = todayKey()): TaskHistory[] {
+  const current = weekKeyOf(today)
+  // Od nejstaršího po tenhle týden – čte se to zleva doprava jako čas.
+  const keys = Array.from({ length: Math.max(1, weeks) }, (_, i) => addWeeks(current, i - weeks + 1))
+  const start = weekKeyOf(state.settings.startDate)
+
+  return sortTasks(state.weeklyTasks)
+    .filter((task) => task.active)
+    .map((task) => {
+      const history = keys
+        // Týdny před začátkem používání by se tvářily jako samá selhání.
+        .filter((week) => week >= start)
+        .map((week) => {
+          const done = getTaskLog(state, week, task.id).dates.length
+          return { week, done, target: task.target, met: done >= task.target }
+        })
+      return {
+        task,
+        weeks: history,
+        metCount: history.filter((w) => w.met).length,
+        total: history.reduce((sum, w) => sum + w.done, 0),
+      }
+    })
+}
+
 /* ------------------------------------------------------------------ */
 /*  Uzavírání týdnů                                                    */
 /* ------------------------------------------------------------------ */

@@ -14,6 +14,7 @@ import {
   requiredFor,
   streakInfo,
   summarizeWeek,
+  taskHistory,
   weeklyBlockTarget,
 } from './engine'
 import { defaultState } from './storage'
@@ -428,6 +429,41 @@ describe('dluh v blocích', () => {
     // mínus 18 vyžadovaných = 3 bloky volného místa.
     expect(entry.debt).toBe(3)
     expect(requiredFor(s, NEXT_MON, 'blocks')).toBe(21)
+  })
+
+  it('historie úkolů ukáže, ve kterých týdnech to vyšlo', () => {
+    const s = makeState()
+    s.settings.startDate = '2026-06-01'
+    s.weeklyTasks = [
+      { id: 'gym', title: 'Posilovna', target: 2, emoji: '🏋️', active: true, rollover: true, order: 0 },
+      { id: 'off', title: 'Vypnutý', target: 1, emoji: '💤', active: false, rollover: false, order: 10 },
+    ]
+    // Tenhle týden dvakrát (splněno), minulý jednou (částečně), předminulý nic.
+    s.weeklyTaskLogs['2026-08-17|gym'] = { week: '2026-08-17', taskId: 'gym', dates: ['2026-08-17', '2026-08-18'], carried: 0 }
+    s.weeklyTaskLogs['2026-08-10|gym'] = { week: '2026-08-10', taskId: 'gym', dates: ['2026-08-11'], carried: 0 }
+
+    const history = taskHistory(s, 4, '2026-08-18')
+    // Vypnutý úkol do historie nepatří – nic o něm neříká.
+    expect(history).toHaveLength(1)
+
+    const weeks = history[0]!.weeks
+    expect(weeks.map((w) => w.done)).toEqual([0, 0, 1, 2])
+    expect(weeks.map((w) => w.met)).toEqual([false, false, false, true])
+    expect(history[0]!.metCount).toBe(1)
+    expect(history[0]!.total).toBe(3)
+  })
+
+  it('historie nezačíná dřív, než se appka začala používat', () => {
+    // Jinak by prvních pár týdnů vypadalo jako série selhání za dobu,
+    // kdy appka ještě neexistovala.
+    const s = makeState()
+    s.settings.startDate = '2026-08-10'
+    s.weeklyTasks = [
+      { id: 'gym', title: 'Posilovna', target: 1, emoji: '🏋️', active: true, rollover: true, order: 0 },
+    ]
+    const history = taskHistory(s, 8, '2026-08-18')
+    expect(history[0]!.weeks).toHaveLength(2)
+    expect(history[0]!.weeks[0]!.week).toBe('2026-08-10')
   })
 
   it('dluh v blocích nikdy nepřeleze to, co jde za týden stihnout', () => {

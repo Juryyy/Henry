@@ -50,16 +50,24 @@ function resetBlocks(): void {
  * u protahování se přes ~4 minuty na svalovou skupinu a sezení rozsah už
  * nezvětšuje (Ingram et al. 2024), takže se blok radši nedoplní do sytosti,
  * než aby přidával minuty, ze kterých nic není.
+ *
+ * Počítá se pro všechny bloky najednou, ne v šabloně: jinak by se to samé
+ * sestavení plánu volalo několikrát na jeden blok jen proto, že se výsledek
+ * potřebuje na třech místech.
  */
-const plannedMinutes = (block: BlockConfig): number =>
-  Math.round(buildBlock(state, today.value, block.slot).totalSeconds / 60)
+const planned = computed(() =>
+  new Map(blocks.value.map((b) => [b.slot, Math.round(buildBlock(state, today.value, b.slot).totalSeconds / 60)])),
+)
+
+const plannedMinutes = (block: BlockConfig): number => planned.value.get(block.slot) ?? block.minutes
 
 /** Vejde se do bloku to, co si člověk nastavil? */
 const fallsShort = (block: BlockConfig): boolean => plannedMinutes(block) < block.minutes - 2
 
 const summary = (block: BlockConfig): string => {
-  const planned = plannedMinutes(block)
-  const length = fallsShort(block) ? `${block.minutes} min, plán vyjde na ${planned}` : `${block.minutes} min`
+  const length = fallsShort(block)
+    ? `${block.minutes} min, plán vyjde na ${plannedMinutes(block)}`
+    : `${block.minutes} min`
   return `${FOCUS_LABELS[block.focus]} · ${length}`
 }
 </script>

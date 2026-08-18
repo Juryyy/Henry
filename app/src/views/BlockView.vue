@@ -160,6 +160,12 @@ function close(): void {
   void router.push('/')
 }
 
+/** Druhý průchod měří čas znovu od začátku, ne od otevření obrazovky. */
+function restart(): void {
+  index.value = 0
+  startedAt.value = Date.now()
+}
+
 /* Obrazovka nemá při cvičení zhasínat. */
 let wakeLock: { release: () => Promise<void> } | null = null
 /** Odešel uživatel dřív, než se zámek stihl získat? */
@@ -295,7 +301,7 @@ const setLabel = computed(() => {
           {{ formatDuration((Date.now() - startedAt) / 1000) }}.
         </p>
         <button class="btn btn-primary btn-lg btn-block" @click="finish">Zapsat a zavřít</button>
-        <button class="btn btn-ghost btn-block" @click="index = 0">Projít znovu</button>
+        <button class="btn btn-ghost btn-block" @click="restart">Projít znovu</button>
       </div>
     </section>
   </main>

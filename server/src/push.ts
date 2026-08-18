@@ -12,8 +12,6 @@ export interface PushPayload {
   url?: string
   /** Skupina notifikace – stejný tag přepíše předchozí místo hromadění. */
   tag?: string
-  /** Akční tlačítka. iOS je (zatím) ignoruje, Android je zobrazí. */
-  actions?: { action: string; title: string }[]
   /** Vlastní data, která se pošlou zpět při kliknutí. */
   data?: Record<string, unknown>
   renotify?: boolean

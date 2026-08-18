@@ -46,7 +46,6 @@ interface PushPayload {
   renotify?: boolean
   requireInteraction?: boolean
   silent?: boolean
-  actions?: { action: string; title: string }[]
   data?: Record<string, unknown>
 }
 
@@ -63,8 +62,6 @@ self.addEventListener('push', (event) => {
   const payload = parsePayload(event)
   const title = payload.title ?? 'Henry'
 
-  // iOS notifikace ignoruje `actions`, `image` i `vibrate`; posílá se to
-  // stejně, protože na Androidu to funguje a iOS to jen přeskočí.
   const options: NotificationOptions = {
     body: payload.body ?? '',
     icon: 'icons/icon-192.png',
@@ -74,7 +71,6 @@ self.addEventListener('push', (event) => {
     requireInteraction: payload.requireInteraction ?? false,
     silent: payload.silent ?? false,
     data: { url: payload.url ?? '#/', ...(payload.data ?? {}) },
-    actions: payload.actions,
   } as NotificationOptions
 
   event.waitUntil(self.registration.showNotification(title, options))
@@ -88,8 +84,7 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close()
 
   const data = (event.notification.data ?? {}) as { url?: string }
-  const target = event.action === 'later' ? undefined : (data.url ?? '#/')
-  if (!target) return
+  const target = data.url ?? '#/'
 
   event.waitUntil(
     (async () => {

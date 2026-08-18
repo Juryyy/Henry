@@ -20,13 +20,27 @@ const router = useRouter()
 const endpoint = computed(() => `${window.location.origin}/api/ingest/steps`)
 
 /**
+ * Adresa platí jen na tomhle stroji.
+ *
+ * Zkratka běží v telefonu, ne tady – a `localhost` v telefonu znamená sám
+ * telefon. Bez upozornění by to člověk celé poskládal a divil se, proč
+ * odesílání skončí chybou spojení.
+ */
+const localOnly = computed(() =>
+  ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname),
+)
+
+/**
  * Tělo požadavku. Hranaté závorky jsou místa pro proměnné ze Zkratek –
  * schválně, ať je vidět, co se kam vkládá.
+ *
+ * Jen jeden den, i když server jich zvládne víc najednou. Postup níž vyrábí
+ * jednu proměnnou; kdyby jich tu byly čtyři, člověk by po kroku 4 zjistil,
+ * že mu tři chybí, a nevěděl proč. Víc dní je v podrobném návodu.
  */
-const body = `{"source":"shortcuts","days":[
- {"date":"[DatumDnes]","steps":[KrokyDnes]},
- {"date":"[DatumVcera]","steps":[KrokyVcera]}
-]}`
+const body = `{"source":"shortcuts",
+ "days":[{"date":"[DatumDnes]",
+          "steps":[KrokyDnes]}]}`
 
 /* ------------------------------------------------------------------ */
 /*  Token                                                              */
@@ -199,6 +213,12 @@ const hasToken = computed(() => tokens.value.length > 0)
               {{ copied === 'url' ? 'Zkopírováno' : 'Kopírovat' }}
             </button>
           </div>
+          <div v-if="localOnly" class="hint c-warn">
+            Pozor: tuhle appku máš otevřenou přes <code>{{ endpoint.split('/')[2] }}</code>, což
+            v telefonu znamená sám telefon. Otevři si Henryho na té adrese, na které ho máš
+            v síti (nebo na doméně zvenku), a adresu si zkopíruj odtamtud – jinak Zkratka nebude
+            mít kam poslat.
+          </div>
         </div>
 
         <div class="field">
@@ -229,7 +249,8 @@ const hasToken = computed(() => tokens.value.length > 0)
             Hranaté závorky jsou místa pro proměnné ze Zkratek – ty se tam vkládají z lišty nad
             klávesnicí, nepíšou se ručně. Datum musí být ve tvaru <code>2026-01-31</code>, tedy
             rok-měsíc-den; ve Zkratkách ho vyrobíš akcí <em>Formátovat datum</em> s vlastním
-            formátem <code>yyyy-MM-dd</code>.
+            formátem <code>yyyy-MM-dd</code>. Posílá se jeden den; jak přidat i včerejšek pro
+            případ, že zkratka jeden večer nevyjde, je v podrobném návodu dole.
           </div>
         </div>
       </section>
@@ -314,5 +335,11 @@ pre.block {
 
 .steps li {
   margin-bottom: 8px;
+}
+
+/* Varování musí být vidět jako varování – `.field .hint` je jinak přebije
+   svou vyšší specificitou a zůstala by z něj další šedá poznámka. */
+.hint.c-warn {
+  color: var(--warn);
 }
 </style>

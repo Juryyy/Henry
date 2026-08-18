@@ -195,7 +195,8 @@ function switchMode(): void {
       </form>
 
       <p class="tiny faint center">
-        Data jsou tvoje a leží na tvém serveru. Žádná analytika, žádné sdílení.
+        Data jsou tvoje a leží na tvém serveru. Žádná analytika, žádné sdílení – a proto tu není
+        ani přihlášení Googlem: Face ID je stejně rychlé a nikomu dalšímu neřekne, kdy cvičíš.
       </p>
     </div>
   </main>

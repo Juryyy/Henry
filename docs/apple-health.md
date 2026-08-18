@@ -10,10 +10,13 @@ poskládat ručně – zabere to tak deset minut.
 
 ## Než začneš
 
-Potřebuješ běžící server a token pro Zkratku. Vygeneruješ si ho v appce:
-**Nastavení → Účet → Token pro Zkratku**. Ukáže se jednou – zkopíruj si ho
-hned. Zkratka neumí přihlášení cookie, proto má vlastní klíč, který jde
-kdykoli zrušit, aniž bys měnil heslo.
+> **Rychlejší cesta:** v appce je průvodce na **Kroky → Kroky z Apple Health
+> automaticky** (nebo Nastavení → Účet). Má tam připravenou adresu, token
+> i tělo požadavku ke zkopírování a umí ověřit, jestli už něco dorazilo.
+> Tenhle dokument je podrobná verze se všemi odbočkami.
+
+Potřebuješ běžící server a token pro Zkratku. Zkratka neumí přihlášení cookie,
+proto má vlastní klíč, který jde kdykoli zrušit, aniž bys měnil heslo.
 V dalším textu je adresa serveru psaná jako `https://henry.tvujserver.cz` –
 dosaď svoji.
 

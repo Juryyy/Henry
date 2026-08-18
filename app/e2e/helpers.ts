@@ -35,7 +35,37 @@ export interface SeedOptions {
  * ukládá svůj stav – kdyby se localStorage přepisoval až po načtení,
  * první `reload` by změnu přepsal zpátky.
  */
+/**
+ * Odpovědi serveru pro testy, které se serverem nic nemají.
+ *
+ * Appka se od zavedení účtů ptá při startu, kdo je přihlášený – bez odpovědi
+ * by každý test skončil na přihlašovací obrazovce. Testy synchronizace si
+ * vlastní odpovědi nastaví na úrovni stránky, což má přednost.
+ */
+export async function stubServer(context: BrowserContext, signedIn = true): Promise<void> {
+  await context.route('**/api/**', async (route) => {
+    const url = route.request().url()
+    const json = (body: unknown, status = 200): Promise<void> =>
+      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+
+    if (url.includes('/api/auth/me')) {
+      return signedIn
+        ? json({ user: { id: 'u1', email: 'ja@example.com', name: 'Martin', createdAt: '' }, subscriptions: 0 })
+        : json({ error: 'Nepřihlášeno.' }, 401)
+    }
+    if (url.includes('/api/health')) return json({ ok: true, now: { date: '', minutes: 0, weekday: 0 }, scheduler: true, registrationOpen: false })
+    if (url.includes('/api/config')) return json({ vapidPublicKey: 'BTest', timezone: 'Europe/Prague' })
+    if (url.includes('/api/state')) return json({ rev: 0, applied: 0, skipped: 0, records: [], versions: [], stats: {} })
+    if (url.includes('/api/steps')) return json({ steps: [] })
+    if (url.includes('/api/auth/sessions')) return json({ sessions: [] })
+    if (url.includes('/api/auth/invite')) return json({ invites: [], code: 'POZVANKA' })
+    if (url.includes('/api/tokens')) return json({ tokens: [] })
+    return json({ ok: true, serverSteps: null })
+  })
+}
+
 export async function seed(context: BrowserContext, options: SeedOptions = {}): Promise<void> {
+  await stubServer(context)
   const state = {
     schemaVersion: 1,
     settings: {
@@ -72,7 +102,6 @@ export async function seed(context: BrowserContext, options: SeedOptions = {}): 
         quietTo: '07:00',
         tone: 'coach',
       },
-      server: { baseUrl: '', token: '' },
     },
     days: Object.fromEntries(
       Object.entries(options.days ?? {}).map(([date, day]) => [

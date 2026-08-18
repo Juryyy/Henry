@@ -6,23 +6,38 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * Odesílání push je nahrazené špionem – zajímá nás, KDY a S ČÍM se volá,
  * ne jestli dojde notifikace na telefon.
  */
-const sent: { title: string; body: string; tag?: string; silent?: boolean }[] = []
+const sent: { title: string; body: string; tag?: string; silent?: boolean; userId?: string }[] = []
 
 vi.mock('./push.js', () => ({
-  sendToAll: vi.fn(async (payload: { title: string; body: string; tag?: string; silent?: boolean }) => {
-    sent.push(payload)
-    return { sent: 1, removed: 0, failed: 0 }
-  }),
+  sendToUser: vi.fn(
+    async (userId: string, payload: { title: string; body: string; tag?: string; silent?: boolean }) => {
+      sent.push({ ...payload, userId })
+      return { sent: 1, removed: 0, failed: 0 }
+    },
+  ),
 }))
 
 import type { StateSnapshot } from './store.js'
 
 const { tick } = await import('./scheduler.js')
-const { getDb, DEFAULT_SCHEDULE } = await import('./store.js')
+const { DEFAULT_SCHEDULE, setSchedule, setSnapshot, upsertSubscription, markSent, setMuted, getMuted } =
+  await import('./store.js')
+const { closeDb, openDb } = await import('./db.js')
+const { createUser } = await import('./users.js')
+
+let userId = ''
 
 /** Konkrétní okamžik v pražském čase. 17. 8. 2026 je pondělí. */
 function at(date: string, time: string): Date {
   return new Date(`${date}T${time}:00+02:00`)
+}
+
+/** Stav zápisu v tabulce `sent` – testy na rozpočet ho potřebují vidět. */
+function sentStatus(key: string): string | undefined {
+  const row = openDb(':memory:').prepare('SELECT status FROM sent WHERE user_id = ? AND key = ?').get(userId, key) as
+    | { status: string }
+    | undefined
+  return row?.status
 }
 
 function snapshot(patch: Partial<StateSnapshot> = {}): StateSnapshot {
@@ -46,17 +61,18 @@ function snapshot(patch: Partial<StateSnapshot> = {}): StateSnapshot {
   }
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   sent.length = 0
-  const db = getDb()
-  db.schedule = { ...DEFAULT_SCHEDULE, timezone: 'Europe/Prague' }
-  db.subscriptions = [
-    { endpoint: 'https://push.example/1', keys: { p256dh: 'a', auth: 'b' }, label: 'test', createdAt: '', failures: 0 },
-  ]
-  db.sent = {}
-  db.muted = {}
-  db.snapshot = snapshot()
-  db.log = []
+  closeDb()
+  openDb(':memory:')
+  userId = (await createUser('ja@example.com', 'dost-dlouhe-heslo')).id
+  setSchedule(userId, { ...DEFAULT_SCHEDULE, timezone: 'Europe/Prague' })
+  upsertSubscription(userId, {
+    endpoint: 'https://push.example/1',
+    keys: { p256dh: 'a', auth: 'b' },
+    label: 'test',
+  })
+  setSnapshot(userId, snapshot())
 })
 
 describe('plánovač', () => {
@@ -76,14 +92,14 @@ describe('plánovač', () => {
     await tick(at('2026-08-17', '07:24'))
     expect(sent).toHaveLength(1)
 
-    getDb().sent = {}
     sent.length = 0
+    markSent(userId, '2026-08-17|block-0', false)
     await tick(at('2026-08-17', '07:40'))
     expect(sent).toHaveLength(0)
   })
 
   it('odcvičený blok se nepřipomíná', async () => {
-    getDb().snapshot = snapshot({ doneSlots: [0] })
+    setSnapshot(userId, snapshot({ doneSlots: [0] }))
     await tick(at('2026-08-17', '07:15'))
     expect(sent).toHaveLength(0)
   })
@@ -95,25 +111,26 @@ describe('plánovač', () => {
   })
 
   it('bez zařízení neposílá nic', async () => {
-    getDb().subscriptions = []
+    openDb(':memory:').prepare('DELETE FROM subscriptions').run()
     await tick(at('2026-08-17', '07:15'))
     expect(sent).toHaveLength(0)
   })
 
   it('vypnuté notifikace nechodí', async () => {
-    getDb().schedule.enabled = false
+    setSchedule(userId, { enabled: false })
     await tick(at('2026-08-17', '07:15'))
     expect(sent).toHaveLength(0)
   })
 
   it('odpolední kontrola kroků chodí jen pod prahem', async () => {
     // 4 000 z porce 5 000 = 80 %, práh je 60 % → nic.
-    getDb().snapshot = snapshot({ steps: 4_000, stepsNeededToday: 1_000 })
+    setSnapshot(userId, snapshot({ steps: 4_000, stepsNeededToday: 1_000 }))
     await tick(at('2026-08-17', '17:45'))
     expect(sent).toHaveLength(0)
 
-    getDb().sent = {}
-    getDb().snapshot = snapshot({ steps: 1_000, stepsNeededToday: 4_000 })
+    setSnapshot(userId, snapshot({ steps: 1_000, stepsNeededToday: 4_000 }))
+    markSent(userId, '2026-08-17|steps', false)
+    openDb(':memory:').prepare('DELETE FROM sent').run()
     await tick(at('2026-08-17', '17:45'))
     expect(sent).toHaveLength(1)
     // formatNumber sází pevnou mezeru (U+00A0), proto \s a ne doslovná mezera.
@@ -126,26 +143,18 @@ describe('plánovač', () => {
   })
 
   it('denní rozpočet omezí počet notifikací se zvukem', async () => {
-    const db = getDb()
     // Předstírej, že už dnes odešly čtyři.
-    db.sent = {
-      '2026-08-17|block-0': 'sent',
-      '2026-08-17|steps': 'sent',
-      '2026-08-17|steps-last': 'sent',
-      '2026-08-17|tasks': 'sent',
+    for (const key of ['block-0', 'steps', 'steps-last', 'tasks']) {
+      markSent(userId, `2026-08-17|${key}`, true)
     }
     await tick(at('2026-08-17', '12:30'))
     expect(sent).toHaveLength(0)
-    expect(db.sent['2026-08-17|block-1']).toBe('skip')
+    expect(sentStatus('2026-08-17|block-1')).toBe('skip')
   })
 
   it('přeskočený slot rozpočet neujídá', async () => {
-    const db = getDb()
-    db.sent = {
-      '2026-08-17|block-0': 'skip',
-      '2026-08-17|steps': 'skip',
-      '2026-08-17|steps-last': 'skip',
-      '2026-08-17|tasks': 'skip',
+    for (const key of ['block-0', 'steps', 'steps-last', 'tasks']) {
+      markSent(userId, `2026-08-17|${key}`, false)
     }
     await tick(at('2026-08-17', '12:30'))
     expect(sent).toHaveLength(1)
@@ -158,59 +167,79 @@ describe('plánovač', () => {
   })
 
   it('slot ignorovaný tři dny po sobě se na dva dny odmlčí', async () => {
-    const db = getDb()
     // Tři předchozí dny: připomínka odešla, blok zůstal neodcvičený.
-    db.sent = {
-      '2026-08-14|block-0': 'sent',
-      '2026-08-15|block-0': 'sent',
-      '2026-08-16|block-0': 'sent',
+    for (const day of ['2026-08-14', '2026-08-15', '2026-08-16']) {
+      markSent(userId, `${day}|block-0`, true)
     }
-    db.snapshot = snapshot({
+    setSnapshot(userId, snapshot({
       history: [
         { date: '2026-08-16', slots: [], steps: 0, target: 5_000 },
         { date: '2026-08-15', slots: [], steps: 0, target: 5_000 },
         { date: '2026-08-14', slots: [], steps: 0, target: 5_000 },
       ],
-    })
+    }))
 
     await tick(at('2026-08-17', '07:15'))
     expect(sent).toHaveLength(0)
-    expect(db.muted['block-0']).toBe('2026-08-19')
+    expect(getMuted(userId, 'block-0')).toBe('2026-08-19')
   })
 
   it('ztlumení se samo neobnovuje donekonečna', async () => {
-    const db = getDb()
-    db.muted = { 'block-0': '2026-08-19' }
+    setMuted(userId, 'block-0', '2026-08-19')
     // Dny, kdy jsme mlčeli, jsou zapsané jako 'skip'.
-    db.sent = {
-      '2026-08-14|block-0': 'skip',
-      '2026-08-15|block-0': 'skip',
-      '2026-08-16|block-0': 'skip',
+    for (const day of ['2026-08-14', '2026-08-15', '2026-08-16']) {
+      markSent(userId, `${day}|block-0`, false)
     }
-    db.snapshot = snapshot({
+    setSnapshot(userId, snapshot({
       date: '2026-08-19',
       history: [
         { date: '2026-08-16', slots: [], steps: 0, target: 5_000 },
         { date: '2026-08-15', slots: [], steps: 0, target: 5_000 },
         { date: '2026-08-14', slots: [], steps: 0, target: 5_000 },
       ],
-    })
+    }))
 
     // 19. 8. 2026 je středa – ztlumení už vypršelo a nesmí se prodloužit.
     await tick(at('2026-08-19', '07:15'))
     expect(sent).toHaveLength(1)
-    expect(db.muted['block-0']).toBeUndefined()
+    expect(getMuted(userId, 'block-0')).toBeNull()
   })
 
   it('připomínají se jen bloky, které uživatel opravdu cvičí', async () => {
-    getDb().schedule.blocksPerDay = 1
+    setSchedule(userId, { blocksPerDay: 1 })
     await tick(at('2026-08-17', '12:30'))
     expect(sent).toHaveLength(0)
   })
 
   it('neaktuální snímek nezpůsobí nesmyslnou hlášku o krocích', async () => {
-    getDb().snapshot = snapshot({ date: '2026-08-10' })
+    setSnapshot(userId, snapshot({ date: '2026-08-10' }))
     await tick(at('2026-08-17', '17:45'))
     expect(sent).toHaveLength(0)
+  })
+
+  it('každý účet dostane jen svoje notifikace', async () => {
+    // Druhý účet se svým vlastním zařízením a jiným časem ranního bloku.
+    const druhy = (await createUser('nekdo@example.com', 'dost-dlouhe-heslo')).id
+    setSchedule(druhy, { ...DEFAULT_SCHEDULE, timezone: 'Europe/Prague', blockTimes: ['08:30', '12:30', '20:00'] })
+    upsertSubscription(druhy, { endpoint: 'https://push.example/2', keys: { p256dh: 'c', auth: 'd' }, label: 'druhý' })
+    setSnapshot(druhy, snapshot())
+
+    await tick(at('2026-08-17', '07:15'))
+    expect(sent.map((m) => m.userId)).toEqual([userId])
+
+    sent.length = 0
+    await tick(at('2026-08-17', '08:30'))
+    expect(sent.map((m) => m.userId)).toEqual([druhy])
+  })
+
+  it('vypnuté notifikace jednoho účtu neumlčí druhý', async () => {
+    const druhy = (await createUser('nekdo@example.com', 'dost-dlouhe-heslo')).id
+    setSchedule(druhy, { ...DEFAULT_SCHEDULE, timezone: 'Europe/Prague' })
+    upsertSubscription(druhy, { endpoint: 'https://push.example/2', keys: { p256dh: 'c', auth: 'd' }, label: 'druhý' })
+    setSnapshot(druhy, snapshot())
+    setSchedule(userId, { enabled: false })
+
+    await tick(at('2026-08-17', '07:15'))
+    expect(sent.map((m) => m.userId)).toEqual([druhy])
   })
 })

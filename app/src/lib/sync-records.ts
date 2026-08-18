@@ -11,8 +11,7 @@
  *  - `ledger` a `lastClosedWeek` – dluhová kniha je odvozená z dnů a nastavení.
  *    Kdyby se přenášela, dvě zařízení by si přetahovala uzávěrku téhož týdne.
  *    Po sloučení se prostě přepočítá (`recalculateFrom`).
- *  - `settings.server` – adresa a token patří zařízení, ne datům. Notebook
- *    může chodit na jinou adresu než telefon.
+ *  - přihlášení – to patří zařízení, ne datům. Cookie se nikam nekopíruje.
  */
 
 import type { AppState, Measurement, Settings, WeeklyTask, WeeklyTaskLog, DayLog } from './types'

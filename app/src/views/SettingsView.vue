@@ -1,6 +1,24 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { checkHealth, fetchVersions, restoreVersion, sendTestPush, type StateVersion } from '@/lib/api'
+import {
+  changePassword,
+  checkHealth,
+  createInvite,
+  createToken,
+  fetchSessions,
+  fetchTokens,
+  fetchVersions,
+  restoreVersion,
+  revokeOtherSessions,
+  revokeSession,
+  revokeToken,
+  sendTestPush,
+  setAccountName,
+  type ApiTokenInfo,
+  type DeviceSession,
+  type StateVersion,
+} from '@/lib/api'
+import { account, signOut } from '@/stores/auth'
 import { dec, num, parseNumber, plural } from '@/lib/format'
 import { EXERCISES } from '@/data/exercises'
 import { debtCap, weeklyBlockTarget } from '@/lib/engine'
@@ -101,6 +119,7 @@ const pushBusy = ref(false)
 
 onMounted(async () => {
   pushActive.value = await hasPushSubscription()
+  void loadAccountDetails()
 })
 
 const blockedReason = computed(() => pushBlockedReason())
@@ -111,7 +130,7 @@ async function turnOnPush(): Promise<void> {
   // jen během reakce na dotek a `await` to „uživatelské gesto“ spotřebuje.
   pushBusy.value = true
   pushMessage.value = ''
-  const result = await enablePush(s.value.server.baseUrl, s.value.server.token)
+  const result = await enablePush()
   pushBusy.value = false
   if (result.ok) {
     pushActive.value = true
@@ -125,7 +144,7 @@ async function turnOnPush(): Promise<void> {
 
 async function turnOffPush(): Promise<void> {
   pushBusy.value = true
-  await disablePush(s.value.server.baseUrl, s.value.server.token)
+  await disablePush()
   pushActive.value = false
   s.value.notifications.enabled = false
   pushBusy.value = false
@@ -136,7 +155,7 @@ async function turnOffPush(): Promise<void> {
 async function testPush(): Promise<void> {
   pushMessage.value = 'Posílám…'
   try {
-    const result = await sendTestPush(s.value.server)
+    const result = await sendTestPush()
     pushMessage.value =
       result.sent > 0
         ? `Odesláno na ${result.sent} zařízení. Za chvíli by to mělo cinknout.`
@@ -151,6 +170,81 @@ async function testLocal(): Promise<void> {
   pushMessage.value = ok ? 'Zobrazeno.' : 'Nejdřív povol notifikace.'
 }
 
+/* Účet ------------------------------------------------------------------- */
+
+const accountMessage = ref('')
+const heslo = ref({ current: '', next: '' })
+const sessions = ref<DeviceSession[]>([])
+const tokens = ref<ApiTokenInfo[]>([])
+const newToken = ref('')
+const invite = ref('')
+
+async function loadAccountDetails(): Promise<void> {
+  try {
+    // `?? []` schválně: neočekávaná odpověď (proxy, přihlášení vypršelo)
+    // nesmí shodit celou obrazovku nastavení kvůli jednomu seznamu.
+    sessions.value = (await fetchSessions()).sessions ?? []
+    tokens.value = (await fetchTokens()).tokens ?? []
+  } catch (err) {
+    accountMessage.value = (err as Error).message
+  }
+}
+
+async function doChangePassword(): Promise<void> {
+  accountMessage.value = 'Měním…'
+  try {
+    const { revoked } = await changePassword(heslo.value.current, heslo.value.next)
+    heslo.value = { current: '', next: '' }
+    accountMessage.value =
+      revoked > 0 ? `Heslo změněné, odhlásil jsem ${revoked} další zařízení.` : 'Heslo změněné.'
+    await loadAccountDetails()
+  } catch (err) {
+    accountMessage.value = (err as Error).message
+  }
+}
+
+async function doRevokeSession(id: string): Promise<void> {
+  await revokeSession(id)
+  await loadAccountDetails()
+}
+
+async function doRevokeOthers(): Promise<void> {
+  const { revoked } = await revokeOtherSessions()
+  accountMessage.value = `Odhlášeno ${revoked} zařízení.`
+  await loadAccountDetails()
+}
+
+async function makeInvite(): Promise<void> {
+  try {
+    invite.value = (await createInvite()).code
+  } catch (err) {
+    accountMessage.value = (err as Error).message
+  }
+}
+
+async function makeToken(): Promise<void> {
+  try {
+    newToken.value = (await createToken('Zkratka')).token
+    await loadAccountDetails()
+  } catch (err) {
+    accountMessage.value = (err as Error).message
+  }
+}
+
+async function dropToken(id: string): Promise<void> {
+  await revokeToken(id)
+  await loadAccountDetails()
+}
+
+/** Jméno se drží v datech i na účtu – ať sedí i v notifikacích. */
+async function saveName(): Promise<void> {
+  try {
+    await setAccountName(s.value.name)
+  } catch {
+    // Jméno v appce funguje i bez serveru; příště se dorovná.
+  }
+}
+
 /* Server ---------------------------------------------------------------- */
 
 const serverStatus = ref('')
@@ -158,8 +252,8 @@ const serverStatus = ref('')
 async function testServer(): Promise<void> {
   serverStatus.value = 'Zkouším…'
   try {
-    const health = await checkHealth(s.value.server)
-    serverStatus.value = `Server žije. Čas ${Math.floor(health.now.minutes / 60)}:${String(health.now.minutes % 60).padStart(2, '0')}, ${health.subscriptions} zařízení, plánovač ${health.scheduler ? 'běží' : 'stojí'}.`
+    const health = await checkHealth()
+    serverStatus.value = `Server žije. Čas ${Math.floor(health.now.minutes / 60)}:${String(health.now.minutes % 60).padStart(2, '0')}, plánovač ${health.scheduler ? 'běží' : 'stojí'}.`
   } catch (err) {
     serverStatus.value = (err as Error).message
   }
@@ -179,8 +273,8 @@ const confirmVersion = ref<number | null>(null)
 async function loadVersions(): Promise<void> {
   versionMessage.value = ''
   try {
-    const data = await fetchVersions(s.value.server)
-    versions.value = data.versions
+    const data = await fetchVersions()
+    versions.value = data.versions ?? []
     if (versions.value.length === 0) versionMessage.value = 'Na serveru zatím nic není.'
   } catch (err) {
     versionMessage.value = `Nepovedlo se: ${(err as Error).message}`
@@ -199,7 +293,7 @@ async function doRestore(rev: number): Promise<void> {
   confirmVersion.value = null
   versionMessage.value = 'Vracím…'
   try {
-    await restoreVersion(s.value.server, rev)
+    await restoreVersion(rev)
     // Server má teď starší data s novým časem – stáhnou se běžnou cestou.
     await syncNow(true)
     versionMessage.value = 'Hotovo, data jsou zpátky.'
@@ -259,7 +353,7 @@ const confirmReset = ref(false)
       <section class="card">
         <div class="field">
           <label for="name">Jak ti má říkat</label>
-          <input id="name" v-model="s.name" type="text" placeholder="nepovinné" maxlength="40" />
+          <input id="name" v-model="s.name" @change="saveName" type="text" placeholder="nepovinné" maxlength="40" />
           <div class="hint">Objeví se v notifikacích. Nech prázdné, pokud ti to leze na nervy.</div>
         </div>
       </section>
@@ -546,44 +640,118 @@ const confirmReset = ref(false)
           <p v-if="pushMessage" class="small muted">{{ pushMessage }}</p>
 
           <p v-if="!isServerConfigured()" class="tiny faint">
-            Naplánované notifikace potřebují server – bez něj neexistuje způsob, jak na iPhonu spustit
-            upozornění v konkrétní čas, když je appka zavřená. Nastav server níž.
+            Naplánované notifikace posílá server – bez něj neexistuje způsob, jak na iPhonu spustit
+            upozornění v konkrétní čas, když je appka zavřená.
           </p>
         </div>
       </section>
 
-      <!-- Server ------------------------------------------------------ -->
+      <!-- Účet -------------------------------------------------------- -->
       <section class="card">
-        <div class="card-title">Server</div>
+        <div class="card-title">Účet</div>
         <div class="stack-sm">
-          <div class="field">
-            <label for="url">Adresa</label>
-            <input id="url" v-model="s.server.baseUrl" type="url" inputmode="url" placeholder="https://henry.tvujserver.cz" autocapitalize="off" autocorrect="off" />
-          </div>
-          <div class="field">
-            <label for="token">Token</label>
-            <input id="token" v-model="s.server.token" type="password" placeholder="z výstupu npm run keys" autocapitalize="off" autocorrect="off" />
-          </div>
+          <p class="small">
+            Přihlášený jako <span class="strong">{{ account?.email }}</span>
+          </p>
+
+          <details>
+            <summary class="small muted" style="cursor: pointer">Změnit heslo</summary>
+            <div class="stack-sm" style="margin-top: 8px">
+              <input v-model="heslo.current" type="password" placeholder="Stávající heslo" autocomplete="current-password" />
+              <input v-model="heslo.next" type="password" placeholder="Nové heslo (aspoň 10 znaků)" autocomplete="new-password" />
+              <button
+                class="btn btn-sm btn-primary"
+                :disabled="!heslo.current || heslo.next.length < 10"
+                @click="doChangePassword"
+              >
+                Změnit heslo
+              </button>
+              <p class="tiny faint">Změna hesla odhlásí všechna ostatní zařízení.</p>
+            </div>
+          </details>
+
+          <details>
+            <summary class="small muted" style="cursor: pointer">
+              Přihlášená zařízení ({{ sessions.length }})
+            </summary>
+            <ul class="list-reset stack-sm" style="margin-top: 8px">
+              <li v-for="device in sessions" :key="device.id" class="row-between version">
+                <span class="small">
+                  {{ device.label || 'zařízení' }}
+                  <span class="tiny faint">
+                    · naposledy {{ new Date(device.lastSeenAt).toLocaleDateString('cs-CZ') }}
+                    <template v-if="device.current">· tohle</template>
+                  </span>
+                </span>
+                <button
+                  v-if="!device.current"
+                  class="btn btn-sm btn-ghost"
+                  @click="doRevokeSession(device.id)"
+                >
+                  Odhlásit
+                </button>
+              </li>
+            </ul>
+            <button
+              v-if="sessions.length > 1"
+              class="btn btn-sm btn-ghost"
+              style="margin-top: 8px"
+              @click="doRevokeOthers"
+            >
+              Odhlásit všechna ostatní
+            </button>
+          </details>
+
+          <details>
+            <summary class="small muted" style="cursor: pointer">Token pro Zkratku</summary>
+            <p class="tiny faint" style="margin: 8px 0">
+              Zkratka z Apple Health neumí přihlášení cookie, takže potřebuje token. Ukáže se
+              jednou – zkopíruj si ho hned, podruhé už ho nikdo nedostane.
+            </p>
+            <button class="btn btn-sm btn-ghost" @click="makeToken">Vytvořit token</button>
+            <p v-if="newToken" class="mono small" style="margin-top: 8px; word-break: break-all">{{ newToken }}</p>
+            <ul class="list-reset stack-sm" style="margin-top: 8px">
+              <li v-for="t in tokens" :key="t.id" class="row-between version">
+                <span class="small">
+                  {{ t.label }}
+                  <span class="tiny faint">
+                    · {{ t.lastUsedAt ? `naposledy ${new Date(t.lastUsedAt).toLocaleDateString('cs-CZ')}` : 'zatím nepoužitý' }}
+                  </span>
+                </span>
+                <button class="btn btn-sm btn-ghost" @click="dropToken(t.id)">Zrušit</button>
+              </li>
+            </ul>
+          </details>
+
+          <details>
+            <summary class="small muted" style="cursor: pointer">Pozvat někoho dalšího</summary>
+            <p class="tiny faint" style="margin: 8px 0">
+              Registrace je zavřená – kdo se má dostat dovnitř, potřebuje kód. Platí týden
+              a jen na jedno použití.
+            </p>
+            <button class="btn btn-sm btn-ghost" @click="makeInvite">Vytvořit pozvánku</button>
+            <p v-if="invite" class="mono small" style="margin-top: 8px; word-break: break-all">{{ invite }}</p>
+          </details>
+
+          <p v-if="accountMessage" class="small muted">{{ accountMessage }}</p>
+
+          <div class="divider" style="margin: 4px 0" />
           <div class="row wrap" style="gap: 8px">
-            <button class="btn btn-sm btn-ghost" :disabled="!s.server.baseUrl" @click="testServer">Otestovat spojení</button>
-            <button class="btn btn-sm btn-ghost" :disabled="!isServerConfigured() || syncing" @click="doSync">
+            <button class="btn btn-sm btn-ghost" :disabled="syncing" @click="doSync">
               {{ syncing ? 'Synchronizuji…' : 'Synchronizovat' }}
             </button>
+            <button class="btn btn-sm btn-ghost" @click="testServer">Stav serveru</button>
+            <button class="btn btn-sm btn-ghost" @click="signOut">Odhlásit se</button>
           </div>
           <p v-if="serverStatus" class="small muted">{{ serverStatus }}</p>
-          <p v-if="s.server.lastSyncAt" class="tiny faint">
-            Poslední synchronizace: {{ new Date(s.server.lastSyncAt).toLocaleString('cs-CZ') }}
-          </p>
-          <p class="tiny faint">
-            Se serverem se drží i tvoje data – kroky, cvičení, úkoly i míry. Když si Henryho otevřeš
-            na druhém zařízení, uvidíš tam totéž. Slučuje se po záznamech, takže ranní odškrtnutý
-            blok z telefonu a odpolední zápis kroků z notebooku přežijí oba.
+          <p v-if="state.meta.syncedAt" class="tiny faint">
+            Poslední synchronizace: {{ new Date(state.meta.syncedAt).toLocaleString('cs-CZ') }}
           </p>
         </div>
       </section>
 
       <!-- Verze na serveru -------------------------------------------- -->
-      <section v-if="isServerConfigured()" class="card">
+      <section class="card">
         <div class="card-title">Verze na serveru</div>
         <p class="tiny faint" style="margin-bottom: 10px">
           Server si po každé synchronizaci odkládá stav stranou. Když si něco rozbiješ – naimportuješ

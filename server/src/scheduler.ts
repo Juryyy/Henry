@@ -15,17 +15,19 @@
  *     vypne notifikace úplně – což je horší než pár vynechaných.
  */
 
-import { sendToAll } from './push.js'
+import { sendToUser } from './push.js'
 import {
   addLog,
+  clearMuted,
   deliveredOn,
-  getDb,
-  markDirty,
+  getMuted,
+  getSchedule,
+  getSnapshot,
   markSent,
-  persist,
+  setMuted,
+  usersWithSubscriptions,
   wasDelivered,
   wasSent,
-  type Database,
   type ScheduleConfig,
   type StateSnapshot,
 } from './store.js'
@@ -94,13 +96,10 @@ function freshSnapshot(snapshot: StateSnapshot | null, today: string): StateSnap
  * Slot je „ignorovaný“, když jsme ten den připomínku poslali a příslušná
  * aktivita přesto zůstala nesplněná. Historie chodí ve snímku z appky.
  */
-function isMuted(db: Database, slotId: string, today: string, snapshot: StateSnapshot | null): boolean {
-  const until = db.muted[slotId]
+function isMuted(userId: string, slotId: string, today: string, snapshot: StateSnapshot | null): boolean {
+  const until = getMuted(userId, slotId)
   if (until && today < until) return true
-  if (until && today >= until) {
-    delete db.muted[slotId]
-    markDirty()
-  }
+  if (until && today >= until) clearMuted(userId, slotId)
   if (!snapshot?.history?.length) return false
 
   const blockIndex = /^block-(\d)$/.exec(slotId)
@@ -111,7 +110,7 @@ function isMuted(db: Database, slotId: string, today: string, snapshot: StateSna
     // Musí to být opravdu doručená připomínka. Kdyby stačil jakýkoli záznam,
     // ztlumení by se samo obnovovalo donekonečna: dny, kdy jsme mlčeli,
     // by se počítaly jako další ignorované.
-    if (!wasDelivered(`${day.date}|${slotId}`)) return false
+    if (!wasDelivered(userId, `${day.date}|${slotId}`)) return false
     if (blockIndex) return !day.slots.includes(Number(blockIndex[1]))
     if (slotId === 'steps' || slotId === 'steps-last') return day.steps < day.target * 0.6
     return false
@@ -119,17 +118,16 @@ function isMuted(db: Database, slotId: string, today: string, snapshot: StateSna
 
   if (!ignored) return false
 
-  db.muted[slotId] = addDays(today, MUTE_DAYS)
-  markDirty()
-  addLog('mute', `${slotId} ztlumen na ${MUTE_DAYS} dny – ${IGNORE_LIMIT}× bez reakce`)
+  setMuted(userId, slotId, addDays(today, MUTE_DAYS))
+  addLog(userId, 'mute', `${slotId} ztlumen na ${MUTE_DAYS} dny – ${IGNORE_LIMIT}× bez reakce`)
   return true
 }
 
 /** Kolikrát už tenhle týden odešla „poslední výzva“. */
-function lastCallsThisWeek(today: string): number {
+function lastCallsThisWeek(userId: string, today: string): number {
   let count = 0
   for (let i = 0; i < 7; i++) {
-    if (wasDelivered(`${addDays(today, -i)}|steps-last`)) count++
+    if (wasDelivered(userId, `${addDays(today, -i)}|steps-last`)) count++
   }
   return count
 }
@@ -139,6 +137,7 @@ function lastCallsThisWeek(today: string): number {
 /* ------------------------------------------------------------------ */
 
 function buildSlots(
+  userId: string,
   schedule: ScheduleConfig,
   snapshot: StateSnapshot | null,
   weekday: number,
@@ -199,7 +198,7 @@ function buildSlots(
       if (!snapshot) return null
       const portion = dailyPortion(snapshot)
       if (portion <= 0 || snapshot.steps >= portion * 0.85) return null
-      if (lastCallsThisWeek(today) >= 3) return null
+      if (lastCallsThisWeek(userId, today) >= 3) return null
       return { ...lastCallMessage(snapshot, `${seed}last`), url: '#/kroky', tag: 'steps' }
     },
   })
@@ -268,8 +267,8 @@ const SILENT_SLOTS = ['evening', 'test']
  * Počítá se ze zápisů, ne z aktuálního seznamu slotů – ten se přes den mění
  * (sobotní úkoly zmizí, jakmile je splníš) a rozpočet by se tím vracel.
  */
-function deliveredTodayCount(today: string): number {
-  return deliveredOn(today, SILENT_SLOTS)
+function deliveredTodayCount(userId: string, today: string): number {
+  return deliveredOn(userId, today, SILENT_SLOTS)
 }
 
 /* ------------------------------------------------------------------ */
@@ -290,31 +289,43 @@ export async function tick(now: Date = new Date()): Promise<void> {
 }
 
 async function runTick(now: Date): Promise<void> {
-  const db = getDb()
-  const schedule = db.schedule
-  if (!schedule.enabled || db.subscriptions.length === 0) return
+  // Každý uživatel má vlastní rozvrh i časové pásmo, takže se prochází
+  // jeden po druhém. Posílá se jen těm, kdo mají aspoň jedno zařízení.
+  for (const userId of usersWithSubscriptions()) {
+    try {
+      await tickUser(userId, now)
+    } catch (err) {
+      console.error('[henry] tik uživatele selhal:', err)
+      addLog(userId, 'error', `plánovač: ${(err as Error).message}`)
+    }
+  }
+}
+
+async function tickUser(userId: string, now: Date): Promise<void> {
+  const schedule = getSchedule(userId)
+  if (!schedule.enabled) return
 
   const zoned = zonedNow(schedule.timezone, now)
   if (inQuietHours(zoned.minutes, parseClock(schedule.quietFrom), parseClock(schedule.quietTo))) return
 
-  const snapshot = freshSnapshot(db.snapshot, zoned.date)
-  const slots = buildSlots(schedule, snapshot, zoned.weekday, zoned.date)
+  const snapshot = freshSnapshot(getSnapshot(userId), zoned.date)
+  const slots = buildSlots(userId, schedule, snapshot, zoned.weekday, zoned.date)
 
   // Připravit si, co je právě splatné, a seřadit podle důležitosti.
   const due = slots
     .filter((slot) => {
-      if (wasSent(`${zoned.date}|${slot.id}`)) return false
+      if (wasSent(userId, `${zoned.date}|${slot.id}`)) return false
       return zoned.minutes >= slot.minutes && zoned.minutes < slot.minutes + GRACE_MINUTES
     })
     .sort((a, b) => a.priority - b.priority)
 
-  let budgetLeft = DAILY_BUDGET - deliveredTodayCount(zoned.date)
+  let budgetLeft = DAILY_BUDGET - deliveredTodayCount(userId, zoned.date)
 
   for (const slot of due) {
     const key = `${zoned.date}|${slot.id}`
 
-    if (isMuted(db, slot.id, zoned.date, snapshot)) {
-      markSent(key, false)
+    if (isMuted(userId, slot.id, zoned.date, snapshot)) {
+      markSent(userId, key, false)
       continue
     }
 
@@ -322,13 +333,13 @@ async function runTick(now: Date): Promise<void> {
     if (!message) {
       // Podmínka nesplněna (blok hotový, kroky nachozené) – označíme jako
       // vyřízené, ať se to za minutu nezkouší znovu.
-      markSent(key, false)
+      markSent(userId, key, false)
       continue
     }
 
     if (!slot.silent && budgetLeft <= 0) {
-      markSent(key, false)
-      addLog('schedule', `${slot.id}: zahozeno, denní rozpočet vyčerpán`)
+      markSent(userId, key, false)
+      addLog(userId, 'schedule', `${slot.id}: zahozeno, denní rozpočet vyčerpán`)
       continue
     }
 
@@ -336,16 +347,16 @@ async function runTick(now: Date): Promise<void> {
     // připomínky mohly vyčerpat rozpočet dřív, než přijde ke slovu večerní
     // kontrola kroků. Poslední místo je proto rezervované pro to důležité.
     if (!slot.silent && budgetLeft === 1 && slot.priority > RESERVED_PRIORITY) {
-      markSent(key, false)
-      addLog('schedule', `${slot.id}: zahozeno, poslední místo držím pro důležitější`)
+      markSent(userId, key, false)
+      addLog(userId, 'schedule', `${slot.id}: zahozeno, poslední místo držím pro důležitější`)
       continue
     }
 
     // Označit PŘED odesláním. Kdyby push trval dlouho a mezitím se stihl
     // spustit další tik, poslal by tutéž notifikaci znovu.
-    markSent(key, true)
+    markSent(userId, key, true)
 
-    const result = await sendToAll({
+    const result = await sendToUser(userId, {
       title: message.title,
       body: message.body,
       url: message.url,
@@ -358,13 +369,11 @@ async function runTick(now: Date): Promise<void> {
     // Označení proběhlo předem kvůli ochraně proti dvojímu odeslání. Když se
     // ale reálně nic neodeslalo, nesmí to ujídat z rozpočtu ani se počítat
     // jako připomínka, kterou uživatel ignoroval.
-    if (result.sent === 0) markSent(key, false)
+    if (result.sent === 0) markSent(userId, key, false)
     else if (!slot.silent) budgetLeft--
 
-    addLog('schedule', `${slot.id}: odesláno ${result.sent}, smazáno ${result.removed}, chyb ${result.failed}`)
+    addLog(userId, 'schedule', `${slot.id}: odesláno ${result.sent}, smazáno ${result.removed}, chyb ${result.failed}`)
   }
-
-  persist()
 }
 
 let timer: NodeJS.Timeout | undefined
@@ -374,7 +383,7 @@ export function startScheduler(): void {
   const run = () => {
     tick().catch((err) => {
       console.error('[henry] plánovač spadl:', err)
-      addLog('error', `plánovač: ${(err as Error).message}`)
+      addLog(null, 'error', `plánovač: ${(err as Error).message}`)
     })
   }
   // Zarovnat na celou minutu, ať časy sedí.

@@ -236,22 +236,12 @@ export interface NotificationSettings {
   tone: 'kind' | 'coach' | 'drsny'
 }
 
-export interface ServerSettings {
-  /** Základní URL push serveru, prázdné = běží se bez serveru. */
-  baseUrl: string
-  /** Token do hlavičky Authorization. */
-  token: string
-  /** Poslední úspěšná synchronizace. */
-  lastSyncAt?: string
-}
-
 export interface Settings {
   name: string
   timezone: string
   steps: StepSettings
   exercise: ExerciseSettings
   notifications: NotificationSettings
-  server: ServerSettings
   /** Kdy uživatel dokončil úvodní průvodce. */
   onboardedAt?: string
   /** Datum, od kterého se počítá historie (dřívější dny se ignorují). */

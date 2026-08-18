@@ -55,10 +55,6 @@ export function defaultSettings(): Settings {
       quietTo: '07:00',
       tone: 'coach',
     },
-    server: {
-      baseUrl: '',
-      token: '',
-    },
   }
 }
 

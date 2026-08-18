@@ -17,8 +17,6 @@ interface SyncRecord {
   rev?: number
 }
 
-const SERVER = { baseUrl: 'https://henry.test', token: 'testovaci-token' }
-
 /** Odchytí volání serveru. `records` se vrátí jako „data z druhého zařízení". */
 async function fakeServer(
   page: import('@playwright/test').Page,
@@ -49,17 +47,6 @@ test.describe('synchronizace', () => {
     const vcera = dayKey(1)
     await seed(context)
     // Server se musí nastavit až po seedu – helper ho nezná.
-    await page.addInitScript(
-      ([key, server]) => {
-        const raw = localStorage.getItem(key as string)
-        if (!raw) return
-        const state = JSON.parse(raw as string)
-        state.settings.server = server
-        localStorage.setItem(key as string, JSON.stringify(state))
-      },
-      ['henry.state.v1', SERVER] as const,
-    )
-
     await fakeServer(page, [
       {
         kind: 'day',
@@ -80,17 +67,6 @@ test.describe('synchronizace', () => {
 
   test('místní změna se pošle na server', async ({ page, context }) => {
     await seed(context)
-    await page.addInitScript(
-      ([key, server]) => {
-        const raw = localStorage.getItem(key as string)
-        if (!raw) return
-        const state = JSON.parse(raw as string)
-        state.settings.server = server
-        localStorage.setItem(key as string, JSON.stringify(state))
-      },
-      ['henry.state.v1', SERVER] as const,
-    )
-
     const server = await fakeServer(page)
 
     await page.goto('/#/')
@@ -112,26 +88,20 @@ test.describe('synchronizace', () => {
     expect((den.payload as { steps: number }).steps).toBe(6_543)
   })
 
-  test('token ani adresa serveru se v datech nikam neposílají', async ({ page, context }) => {
+  test('v odesílaných datech nejsou žádné přihlašovací údaje', async ({ page, context }) => {
     await seed(context)
-    await page.addInitScript(
-      ([key, server]) => {
-        const raw = localStorage.getItem(key as string)
-        if (!raw) return
-        const state = JSON.parse(raw as string)
-        state.settings.server = server
-        localStorage.setItem(key as string, JSON.stringify(state))
-      },
-      ['henry.state.v1', SERVER] as const,
-    )
-
     const server = await fakeServer(page)
     await page.goto('/#/nastaveni')
     await ready(page)
     await page.getByRole('button', { name: 'Synchronizovat' }).click()
     await expect.poll(() => server.pushed.length, { timeout: 10_000 }).toBeGreaterThan(0)
 
-    expect(JSON.stringify(server.pushed)).not.toContain(SERVER.token)
-    expect(JSON.stringify(server.pushed)).not.toContain('henry.test')
+    const dump = JSON.stringify(server.pushed)
+    for (const secret of ['password', 'token', 'session', 'cookie']) {
+      expect(dump.toLowerCase()).not.toContain(secret)
+    }
+    // Nastavení jde po sekcích – a mezi nimi žádná, která by nesla přihlášení.
+    const sections = server.pushed.filter((r) => r.kind === 'settings').map((r) => r.id).sort()
+    expect(sections).toEqual(['exercise', 'notifications', 'profile', 'steps'])
   })
 })

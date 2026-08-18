@@ -1,16 +1,17 @@
 /**
  * Synchronizace se serverem.
  *
- * Zdrojem pravdy jsou data v telefonu. Server slouží jen ke dvěma věcem:
- *   1. posílá notifikace (potřebuje k tomu vědět, jak na tom dneska jsi),
- *   2. přebírá kroky z Apple Shortcuts, které si odsud stáhneme.
+ * Pracovní kopie dat žije v telefonu – díky ní appka funguje offline
+ * a reaguje okamžitě. Server je archiv a slučovač: drží data i mimo telefon,
+ * slévá je z ostatních zařízení, posílá notifikace a přebírá kroky ze Zkratky.
  *
- * Když server není nastavený nebo je nedostupný, appka funguje dál.
+ * Když je server zrovna nedostupný, appka jede dál z místní kopie.
  */
 
 import { ref } from 'vue'
 import { pullSteps, pushState, syncWithServer } from './api'
 import { buildSnapshot, setSteps, state, today, todayStatus, withRemoteApply } from '@/stores/app'
+import { signedIn } from '@/stores/auth'
 import { applyRecords, collectChanged } from './sync-records'
 import { resubscribeOnLaunch, setBadge } from './sw-client'
 import { todayKey } from './date'
@@ -24,8 +25,9 @@ const MIN_INTERVAL_MS = 5 * 60 * 1000
 
 let lastAttempt = 0
 
+/** Bez přihlášení se synchronizovat nedá – appka pak jede jen lokálně. */
 export function isServerConfigured(): boolean {
-  return !!state.settings.server.baseUrl && !!state.settings.server.token
+  return signedIn.value
 }
 
 /**
@@ -43,7 +45,6 @@ export async function syncNow(force = false): Promise<boolean> {
 
   try {
     await syncWithServer(
-      state.settings.server,
       state.settings.notifications,
       buildSnapshot(),
       state.settings.timezone,
@@ -51,7 +52,7 @@ export async function syncNow(force = false): Promise<boolean> {
     )
 
     // Kroky z Health se berou jako pravda – uživatel je nezapisoval ručně.
-    const entries = await pullSteps(state.settings.server, 21)
+    const entries = await pullSteps(21)
     let oldestChanged: string | null = null
     for (const entry of entries) {
       const local = state.days[entry.date]
@@ -70,7 +71,6 @@ export async function syncNow(force = false): Promise<boolean> {
 
     await syncRecords()
 
-    state.settings.server.lastSyncAt = new Date().toISOString()
     return true
   } catch (err) {
     lastSyncError.value = (err as Error).message
@@ -93,7 +93,7 @@ async function syncRecords(): Promise<void> {
   const startedAt = new Date().toISOString()
   const changed = collectChanged(state, state.meta.pushedAt)
 
-  const result = await pushState(state.settings.server, state.meta.rev ?? 0, changed)
+  const result = await pushState(state.meta.rev ?? 0, changed)
 
   const applied = withRemoteApply(() => applyRecords(state, result.records))
 
@@ -119,6 +119,6 @@ export async function maybeSync(): Promise<void> {
   void setBadge(Math.max(0, status.blocksTarget - status.blocksDone))
 
   if (!isServerConfigured()) return
-  void resubscribeOnLaunch(state.settings.server.baseUrl, state.settings.server.token)
+  void resubscribeOnLaunch()
   await syncNow(false)
 }

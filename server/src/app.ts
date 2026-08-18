@@ -2,34 +2,72 @@
  * HTTP rozhraní serveru. Vytvoření aplikace je schválně oddělené od startu
  * (`index.ts`) – jinak by import kvůli testu otevřel port a nastartoval
  * plánovač.
+ *
+ * Server servíruje i samotnou appku, takže všechno běží z jedné adresy.
+ * Není to jen pohodlí: přihlašovací cookie funguje čistě jen ze stejného
+ * původu a odpadá tím celý CORS.
  */
 
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import express, { type NextFunction, type Request, type Response } from 'express'
-import cors from 'cors'
 import { config } from './config.js'
-import { requireAuth } from './auth.js'
-import { sendToAll } from './push.js'
+import {
+  clearRateLimit,
+  clearSessionCookie,
+  rateLimit,
+  requireAuth,
+  sessionToken,
+  setSessionCookie,
+} from './auth.js'
+import { sendToUser } from './push.js'
 import { tick } from './scheduler.js'
 import { zonedNow } from './time.js'
 import { coerceSteps, extractDailySteps, isValidDateKey, type HaePayload } from './health-export.js'
 import {
+  changePassword,
+  consumeInvite,
+  createApiToken,
+  createInvite,
+  createSession,
+  createUser,
+  destroyAllSessions,
+  destroySession,
+  findUserByEmail,
+  inviteValid,
+  listApiTokens,
+  listInvites,
+  listSessions,
+  normalizeEmail,
+  passwordProblem,
+  registrationOpen,
+  renameUser,
+  revokeApiToken,
+  revokeSessionByPrefix,
+  verifyPassword,
+} from './users.js'
+import {
   currentRev,
-  listSnapshots,
+  listVersions,
   pullRecords,
   pushRecords,
-  restoreSnapshot,
-  saveSnapshot,
+  restoreVersion,
+  saveVersion,
   syncStats,
 } from './sync-store.js'
 import {
   addLog,
-  DEFAULT_SCHEDULE,
-  getDb,
-  markDirty,
-  persist,
+  countSubscriptions,
+  getSchedule,
+  getSnapshot,
+  getSteps,
+  listLog,
+  listSubscriptions,
   recentSteps,
   recordSteps,
   removeSubscription,
+  setSchedule,
+  setSnapshot,
   upsertSubscription,
   type StateSnapshot,
 } from './store.js'
@@ -37,14 +75,6 @@ import {
 export const app = express()
 app.set('trust proxy', 1)
 app.disable('x-powered-by')
-
-app.use(
-  cors({
-    origin: config.corsOrigins.includes('*') ? true : config.corsOrigins,
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Henry-Token'],
-  }),
-)
 
 /**
  * Parsování těla se schválně NEpřipojuje globálně. Pořadí je vždy
@@ -65,23 +95,200 @@ const stateJson = express.json({ limit: '8mb' })
  */
 const anyJson = express.json({ limit: '256kb', type: () => true })
 
+/** Přihlašování a registrace se dají zkoušet hrubou silou – tady se to zarazí. */
+const authLimit = rateLimit({ max: 10, windowMs: 10 * 60 * 1000 })
+
+function str(value: unknown, max = 200): string {
+  return typeof value === 'string' ? value.slice(0, max) : ''
+}
+
+/** Popisek zařízení do seznamu přihlášení. Nic chytrého, jen orientace. */
+function deviceLabel(req: Request): string {
+  const ua = req.header('user-agent') ?? ''
+  if (/iPhone/i.test(ua)) return 'iPhone'
+  if (/iPad/i.test(ua)) return 'iPad'
+  if (/Android/i.test(ua)) return 'Android'
+  if (/Macintosh/i.test(ua)) return 'Mac'
+  if (/Windows/i.test(ua)) return 'Windows'
+  if (/Linux/i.test(ua)) return 'Linux'
+  return 'neznámé zařízení'
+}
+
 /* ------------------------------------------------------------------ */
 /*  Veřejné                                                            */
 /* ------------------------------------------------------------------ */
 
 app.get('/api/health', (_req, res) => {
-  const db = getDb()
   res.json({
     ok: true,
-    now: zonedNow(db.schedule.timezone),
-    subscriptions: db.subscriptions.length,
-    scheduler: config.schedulerEnabled && db.schedule.enabled,
+    now: zonedNow(config.timezone),
+    scheduler: config.schedulerEnabled,
+    // Aby appka věděla, jestli nabídnout založení účtu, nebo rovnou přihlášení.
+    registrationOpen: registrationOpen(),
   })
 })
 
 // Veřejný VAPID klíč není tajný – appka ho potřebuje ještě před přihlášením.
 app.get('/api/config', (_req, res) => {
-  res.json({ vapidPublicKey: config.vapid.publicKey, timezone: getDb().schedule.timezone })
+  res.json({ vapidPublicKey: config.vapid.publicKey, timezone: config.timezone })
+})
+
+/* ------------------------------------------------------------------ */
+/*  Účty                                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Registrace je otevřená jen do založení prvního účtu – ten si zakládá
+ * majitel serveru. Další lidé se dostanou dovnitř jen s pozvánkou; otevřená
+ * registrace na veřejné adrese je pozvánka pro kohokoli.
+ */
+app.post('/api/auth/register', authLimit, json, async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>
+  const email = normalizeEmail(body.email)
+  const password = str(body.password)
+  const invite = str(body.invite, 100)
+
+  if (!email) {
+    res.status(400).json({ error: 'Tohle nevypadá jako e-mailová adresa.' })
+    return
+  }
+  const problem = passwordProblem(password)
+  if (problem) {
+    res.status(400).json({ error: problem })
+    return
+  }
+
+  const first = registrationOpen()
+  if (!first && !inviteValid(invite)) {
+    res.status(403).json({ error: 'Registrace je jen na pozvánku.' })
+    return
+  }
+  if (findUserByEmail(email)) {
+    res.status(409).json({ error: 'Účet s touhle adresou už existuje.' })
+    return
+  }
+
+  const user = await createUser(email, password, str(body.name, 60))
+  if (!first) consumeInvite(invite, user.id)
+
+  const token = createSession(user.id, deviceLabel(req))
+  setSessionCookie(res, token)
+  clearRateLimit(req)
+  addLog(user.id, 'auth', first ? 'založen první účet' : 'založen účet na pozvánku')
+  res.json({ user, first })
+})
+
+app.post('/api/auth/login', authLimit, json, async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>
+  const email = normalizeEmail(body.email)
+  const password = str(body.password)
+
+  const user = email ? findUserByEmail(email) : null
+  // Stejná hláška i stejná cesta pro neexistující účet i špatné heslo –
+  // jinak by šlo přes registraci zjistit, kdo tu má účet.
+  const ok = user ? await verifyPassword(password, user.passwordHash) : false
+  if (!user || !ok) {
+    res.status(401).json({ error: 'Nesedí e-mail nebo heslo.' })
+    return
+  }
+
+  const token = createSession(user.id, deviceLabel(req))
+  setSessionCookie(res, token)
+  clearRateLimit(req)
+  res.json({ user: { id: user.id, email: user.email, name: user.name, createdAt: user.createdAt } })
+})
+
+app.post('/api/auth/logout', (req: Request, res: Response) => {
+  const token = sessionToken(req)
+  if (token) destroySession(token)
+  clearSessionCookie(res)
+  res.json({ ok: true })
+})
+
+app.get('/api/auth/me', requireAuth, (req: Request, res: Response) => {
+  res.json({ user: req.user, subscriptions: countSubscriptions(req.user!.id) })
+})
+
+app.post('/api/auth/password', requireAuth, json, async (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>
+  const user = findUserByEmail(req.user!.email)
+  if (!user || !(await verifyPassword(str(body.current), user.passwordHash))) {
+    res.status(401).json({ error: 'Stávající heslo nesedí.' })
+    return
+  }
+  const problem = passwordProblem(str(body.next))
+  if (problem) {
+    res.status(400).json({ error: problem })
+    return
+  }
+
+  await changePassword(user.id, str(body.next))
+  // Změna hesla má vyhodit ostatní zařízení – jinak by změna po prozrazení
+  // hesla nic neřešila.
+  const revoked = destroyAllSessions(user.id, req.sessionId)
+  addLog(user.id, 'auth', `změna hesla, odhlášeno ${revoked} dalších zařízení`)
+  res.json({ ok: true, revoked })
+})
+
+app.post('/api/auth/name', requireAuth, json, (req: Request, res: Response) => {
+  renameUser(req.user!.id, str((req.body as Record<string, unknown>)?.name, 60))
+  res.json({ ok: true })
+})
+
+app.get('/api/auth/sessions', requireAuth, (req: Request, res: Response) => {
+  res.json({ sessions: listSessions(req.user!.id, req.sessionId) })
+})
+
+app.post('/api/auth/sessions/revoke', requireAuth, json, (req: Request, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>
+  if (body.all === true) {
+    const revoked = destroyAllSessions(req.user!.id, req.sessionId)
+    res.json({ ok: true, revoked })
+    return
+  }
+  const id = str(body.id, 64)
+  if (!id) {
+    res.status(400).json({ error: 'Chybí id sezení.' })
+    return
+  }
+  res.json({ ok: revokeSessionByPrefix(req.user!.id, id) })
+})
+
+/* ------------------------------------------------------------------ */
+/*  Pozvánky                                                           */
+/* ------------------------------------------------------------------ */
+
+app.post('/api/auth/invite', requireAuth, json, (req: Request, res: Response) => {
+  const code = createInvite(req.user!.id)
+  addLog(req.user!.id, 'auth', 'vytvořena pozvánka')
+  res.json({ code })
+})
+
+app.get('/api/auth/invites', requireAuth, (req: Request, res: Response) => {
+  res.json({ invites: listInvites(req.user!.id) })
+})
+
+/* ------------------------------------------------------------------ */
+/*  Tokeny pro Apple Shortcuts                                         */
+/* ------------------------------------------------------------------ */
+
+app.get('/api/tokens', requireAuth, (req: Request, res: Response) => {
+  res.json({ tokens: listApiTokens(req.user!.id) })
+})
+
+app.post('/api/tokens', requireAuth, json, (req: Request, res: Response) => {
+  const label = str((req.body as Record<string, unknown>)?.label, 60) || 'Zkratka'
+  // Token se ukazuje jednou. Podruhé už ho nikdo nedostane, ani majitel.
+  res.json({ token: createApiToken(req.user!.id, label), label })
+})
+
+app.post('/api/tokens/revoke', requireAuth, json, (req: Request, res: Response) => {
+  const id = str((req.body as Record<string, unknown>)?.id, 64)
+  if (!id) {
+    res.status(400).json({ error: 'Chybí id tokenu.' })
+    return
+  }
+  res.json({ ok: revokeApiToken(req.user!.id, id) })
 })
 
 /* ------------------------------------------------------------------ */
@@ -89,35 +296,35 @@ app.get('/api/config', (_req, res) => {
 /* ------------------------------------------------------------------ */
 
 app.post('/api/subscribe', requireAuth, json, (req: Request, res: Response) => {
-  const { subscription, label } = req.body ?? {}
+  const { subscription, label } = (req.body ?? {}) as {
+    subscription?: { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } }
+    label?: unknown
+  }
   if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
     res.status(400).json({ error: 'Chybí platný objekt subscription.' })
     return
   }
-  const saved = upsertSubscription({
+  const saved = upsertSubscription(req.user!.id, {
     endpoint: String(subscription.endpoint),
     keys: { p256dh: String(subscription.keys.p256dh), auth: String(subscription.keys.auth) },
     label: typeof label === 'string' ? label.slice(0, 80) : undefined,
   })
-  addLog('subscribe', saved.label)
-  persist()
-  res.json({ ok: true, subscriptions: getDb().subscriptions.length })
+  addLog(req.user!.id, 'subscribe', saved.label)
+  res.json({ ok: true, subscriptions: countSubscriptions(req.user!.id) })
 })
 
 app.post('/api/unsubscribe', requireAuth, json, (req: Request, res: Response) => {
-  const endpoint = req.body?.endpoint
+  const endpoint = (req.body as Record<string, unknown>)?.endpoint
   if (typeof endpoint !== 'string') {
     res.status(400).json({ error: 'Chybí endpoint.' })
     return
   }
-  const removed = removeSubscription(endpoint)
-  persist()
-  res.json({ ok: true, removed })
+  res.json({ ok: true, removed: removeSubscription(req.user!.id, endpoint) })
 })
 
-app.get('/api/subscriptions', requireAuth, (_req, res) => {
+app.get('/api/subscriptions', requireAuth, (req: Request, res: Response) => {
   res.json({
-    subscriptions: getDb().subscriptions.map((s) => ({
+    subscriptions: listSubscriptions(req.user!.id).map((s) => ({
       label: s.label,
       createdAt: s.createdAt,
       lastSuccessAt: s.lastSuccessAt,
@@ -129,7 +336,7 @@ app.get('/api/subscriptions', requireAuth, (_req, res) => {
 })
 
 /* ------------------------------------------------------------------ */
-/*  Synchronizace stavu a nastavení                                    */
+/*  Snímek pro notifikace a rozvrh                                     */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -142,12 +349,12 @@ function num(value: unknown, fallback = 0): number {
 }
 
 app.post('/api/sync', requireAuth, json, (req: Request, res: Response) => {
-  const db = getDb()
-  const { snapshot, schedule } = req.body ?? {}
+  const userId = req.user!.id
+  const { snapshot, schedule } = (req.body ?? {}) as Record<string, unknown>
 
   if (snapshot && typeof snapshot === 'object') {
     const s = snapshot as Partial<StateSnapshot>
-    db.snapshot = {
+    setSnapshot(userId, {
       updatedAt: new Date().toISOString(),
       date: String(s.date ?? ''),
       steps: num(s.steps),
@@ -170,19 +377,13 @@ app.post('/api/sync', requireAuth, json, (req: Request, res: Response) => {
             target: num(d?.target),
           }))
         : [],
-    }
-    markDirty()
+    })
   }
 
-  if (schedule && typeof schedule === 'object') {
-    db.schedule = { ...DEFAULT_SCHEDULE, ...db.schedule, ...schedule }
-    db.schedule.blocksPerDay = Math.max(1, Math.min(3, Math.round(num(db.schedule.blocksPerDay, 3))))
-    markDirty()
-  }
+  if (schedule && typeof schedule === 'object') setSchedule(userId, schedule)
 
-  persist()
-  const date = getDb().snapshot?.date ?? ''
-  res.json({ ok: true, serverSteps: getDb().steps[date] ?? null })
+  const date = getSnapshot(userId)?.date ?? ''
+  res.json({ ok: true, serverSteps: date ? getSteps(userId, date) : null })
 })
 
 /* ------------------------------------------------------------------ */
@@ -193,7 +394,7 @@ app.post('/api/sync', requireAuth, json, (req: Request, res: Response) => {
  * Očekávaný požadavek ze zkratky:
  *
  *   POST /api/ingest/steps
- *   Authorization: Bearer <token>
+ *   Authorization: Bearer <token z Nastavení>
  *   { "date": "2026-08-17", "steps": 8123 }
  *
  * Nebo víc dní najednou (doporučeno – zahojí to den, kdy zkratka neproběhla,
@@ -206,9 +407,12 @@ app.post('/api/sync', requireAuth, json, (req: Request, res: Response) => {
  * (ruční test, druhý spouštěč) a přičítání by kroky zdvojnásobilo.
  */
 app.post('/api/ingest/steps', requireAuth, anyJson, (req: Request, res: Response) => {
-  const db = getDb()
-  const fallbackDate = zonedNow(db.schedule.timezone).date
-  const body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) as Record<string, unknown>
+  const userId = req.user!.id
+  const fallbackDate = zonedNow(getSchedule(userId).timezone).date
+  const body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {}) as Record<
+    string,
+    unknown
+  >
 
   const incoming: { date: string; steps: number }[] = []
 
@@ -235,18 +439,16 @@ app.post('/api/ingest/steps', requireAuth, anyJson, (req: Request, res: Response
   }
 
   const source = typeof body.source === 'string' ? body.source.slice(0, 30) : 'shortcuts'
-  for (const row of accepted) recordSteps(row.date, row.steps, source)
+  for (const row of accepted) recordSteps(userId, row.date, row.steps, source)
 
   // Ať notifikace hned reflektují nová data, i když appka není otevřená.
-  const todayRow = accepted.find((row) => row.date === db.snapshot?.date)
-  if (db.snapshot && todayRow) {
-    db.snapshot.steps = todayRow.steps
-    db.snapshot.updatedAt = new Date().toISOString()
-    markDirty()
+  const snapshot = getSnapshot(userId)
+  const todayRow = accepted.find((row) => row.date === snapshot?.date)
+  if (snapshot && todayRow) {
+    setSnapshot(userId, { ...snapshot, steps: todayRow.steps, updatedAt: new Date().toISOString() })
   }
 
-  addLog('steps', accepted.map((r) => `${r.date}:${r.steps}`).join(' '))
-  persist()
+  addLog(userId, 'steps', accepted.map((r) => `${r.date}:${r.steps}`).join(' '))
   res.json({ ok: true, saved: accepted })
 })
 
@@ -256,6 +458,7 @@ app.post('/api/ingest/steps', requireAuth, anyJson, (req: Request, res: Response
  * desítky megabajtů a výchozích 100 kB by to okamžitě odmítlo.
  */
 app.post('/api/ingest/health-auto-export', requireAuth, bigJson, (req: Request, res: Response) => {
+  const userId = req.user!.id
   const rows = extractDailySteps(req.body as HaePayload)
   if (rows.length === 0) {
     res.status(400).json({ error: 'V payloadu není metrika step_count.' })
@@ -263,42 +466,15 @@ app.post('/api/ingest/health-auto-export', requireAuth, bigJson, (req: Request, 
   }
   for (const row of rows) {
     if (row.steps < 0 || row.steps > 300_000) continue
-    recordSteps(row.date, row.steps, 'health-auto-export')
+    recordSteps(userId, row.date, row.steps, 'health-auto-export')
   }
-  addLog('steps', `health-auto-export: ${rows.length} dní`)
-  persist()
+  addLog(userId, 'steps', `health-auto-export: ${rows.length} dní`)
   res.json({ ok: true, days: rows.length })
 })
 
 app.get('/api/steps', requireAuth, (req: Request, res: Response) => {
-  const days = Math.min(400, Math.max(1, Number(req.query.days ?? 30)))
-  res.json({ steps: recentSteps(days) })
-})
-
-/* ------------------------------------------------------------------ */
-/*  Diagnostika                                                        */
-/* ------------------------------------------------------------------ */
-
-app.post('/api/test', requireAuth, json, async (req: Request, res: Response) => {
-  const result = await sendToAll({
-    title: typeof req.body?.title === 'string' ? req.body.title : 'Henry zkouší mikrofon',
-    body: typeof req.body?.body === 'string' ? req.body.body : 'Když tohle vidíš, notifikace fungují. Můžeš zavřít.',
-    url: '#/',
-    tag: 'test',
-    renotify: true,
-  })
-  addLog('test', JSON.stringify(result))
-  persist()
-  res.json({ ok: true, ...result })
-})
-
-app.post('/api/tick', requireAuth, async (_req, res) => {
-  await tick()
-  res.json({ ok: true })
-})
-
-app.get('/api/log', requireAuth, (_req, res) => {
-  res.json({ log: getDb().log.slice(0, 100) })
+  const days = Math.min(400, Math.max(1, Number(req.query.days ?? 30) || 30))
+  res.json({ steps: recentSteps(req.user!.id, days) })
 })
 
 /* ------------------------------------------------------------------ */
@@ -312,7 +488,7 @@ app.get('/api/log', requireAuth, (_req, res) => {
 app.get('/api/state', requireAuth, (req: Request, res: Response) => {
   const since = Number(req.query.since)
   const from = Number.isFinite(since) && since > 0 ? Math.floor(since) : 0
-  const { rev, records } = pullRecords(from)
+  const { rev, records } = pullRecords(req.user!.id, from)
   res.json({ rev, records, count: records.length })
 })
 
@@ -322,6 +498,7 @@ app.get('/api/state', requireAuth, (req: Request, res: Response) => {
  * jedno kolo místo dvou.
  */
 app.post('/api/state', requireAuth, stateJson, (req: Request, res: Response) => {
+  const userId = req.user!.id
   const body = req.body as { records?: unknown; since?: unknown } | undefined
   const incoming = Array.isArray(body?.records) ? body.records : []
   if (incoming.length > 20_000) {
@@ -332,35 +509,92 @@ app.post('/api/state', requireAuth, stateJson, (req: Request, res: Response) => 
   const sinceRaw = Number(body?.since)
   const since = Number.isFinite(sinceRaw) && sinceRaw > 0 ? Math.floor(sinceRaw) : 0
 
-  const result = pushRecords(incoming)
-  const { rev, records } = pullRecords(since)
+  const result = pushRecords(userId, incoming)
+  const { rev, records } = pullRecords(userId, since)
   if (result.applied > 0) {
-    addLog('sync', `přijato ${result.applied} záznamů (rev ${rev})`)
-    saveSnapshot()
+    addLog(userId, 'sync', `přijato ${result.applied} záznamů (rev ${rev})`)
+    saveVersion(userId)
   }
 
   res.json({ rev, applied: result.applied, skipped: result.skipped, records })
 })
 
 /** Verze stavu k případnému návratu. */
-app.get('/api/state/versions', requireAuth, (_req, res) => {
-  res.json({ versions: listSnapshots(), stats: syncStats() })
+app.get('/api/state/versions', requireAuth, (req: Request, res: Response) => {
+  res.json({ versions: listVersions(req.user!.id), stats: syncStats(req.user!.id) })
 })
 
 app.post('/api/state/restore', requireAuth, json, (req: Request, res: Response) => {
+  const userId = req.user!.id
   const rev = Number((req.body as { rev?: unknown })?.rev)
   if (!Number.isFinite(rev) || rev <= 0) {
     res.status(400).json({ error: 'Chybí číslo verze.' })
     return
   }
-  const result = restoreSnapshot(Math.floor(rev))
+  const result = restoreVersion(userId, Math.floor(rev))
   if (!result) {
     res.status(404).json({ error: 'Taková verze tu není.' })
     return
   }
-  addLog('sync', `návrat k verzi ${rev}`)
-  res.json({ ...result, rev: currentRev() })
+  addLog(userId, 'sync', `návrat k verzi ${rev}`)
+  res.json({ ...result, rev: currentRev(userId) })
 })
+
+/* ------------------------------------------------------------------ */
+/*  Diagnostika                                                        */
+/* ------------------------------------------------------------------ */
+
+app.post('/api/test', requireAuth, json, async (req: Request, res: Response) => {
+  const userId = req.user!.id
+  const body = (req.body ?? {}) as Record<string, unknown>
+  const result = await sendToUser(userId, {
+    title: str(body.title, 80) || 'Henry zkouší mikrofon',
+    body: str(body.body, 200) || 'Když tohle vidíš, notifikace fungují. Můžeš zavřít.',
+    url: '#/',
+    tag: 'test',
+    renotify: true,
+  })
+  addLog(userId, 'test', JSON.stringify(result))
+  res.json({ ok: true, ...result })
+})
+
+app.post('/api/tick', requireAuth, async (_req, res) => {
+  await tick()
+  res.json({ ok: true })
+})
+
+app.get('/api/log', requireAuth, (req: Request, res: Response) => {
+  res.json({ log: listLog(req.user!.id, 100) })
+})
+
+/* ------------------------------------------------------------------ */
+/*  Appka                                                              */
+/* ------------------------------------------------------------------ */
+
+const appDir = config.appDir ? resolve(config.appDir) : ''
+const hasApp = !!appDir && existsSync(resolve(appDir, 'index.html'))
+
+if (hasApp) {
+  // Soubory s otiskem v názvu se nikdy nemění, index a service worker ano.
+  app.use(
+    express.static(appDir, {
+      index: false,
+      setHeaders: (res, path) => {
+        if (/\/(index\.html|sw\.js|manifest\.webmanifest)$/.test(path)) {
+          res.setHeader('Cache-Control', 'no-cache')
+        } else if (/\/assets\//.test(path)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+        }
+      },
+    }),
+  )
+
+  // Cokoli mimo API je navigace v appce – vrací se index.html a routu si
+  // přebere prohlížeč.
+  app.get(/^(?!\/api\/).*/, (_req, res) => {
+    res.sendFile(resolve(appDir, 'index.html'))
+  })
+}
 
 /* ------------------------------------------------------------------ */
 /*  Chyby                                                              */
@@ -375,8 +609,13 @@ app.use((err: Error & { status?: number; statusCode?: number }, _req: Request, r
   // parser u nich nastavuje status (400, resp. 413) a ten je potřeba zachovat.
   const status = err.status ?? err.statusCode ?? 500
   if (status >= 500) console.error('[henry]', err)
-  addLog('error', `${status} ${err.message}`)
+  addLog(null, 'error', `${status} ${err.message}`)
   res.status(status).json({
-    error: status === 413 ? 'Tělo požadavku je příliš velké.' : status === 400 ? 'Tělo požadavku není platné JSON.' : 'Něco se pokazilo na serveru.',
+    error:
+      status === 413
+        ? 'Tělo požadavku je příliš velké.'
+        : status === 400
+          ? 'Tělo požadavku není platné JSON.'
+          : 'Něco se pokazilo na serveru.',
   })
 })

@@ -1,5 +1,11 @@
-import 'dotenv/config'
+import { config as loadEnv } from 'dotenv'
 import { resolve } from 'node:path'
+
+// `.env` leží v kořeni repozitáře (odtud ho bere i docker compose), ale
+// `npm run dev` se pouští z `server/`. Načte se proto obojí; dotenv už
+// nastavené proměnné nepřepisuje, takže na pořadí nezáleží.
+loadEnv()
+loadEnv({ path: resolve(process.cwd(), '../.env') })
 
 function required(name: string, value: string | undefined): string {
   if (!value) {
@@ -20,9 +26,6 @@ export const config = {
   /** Časové pásmo, ve kterém se vyhodnocují časy připomínek. */
   timezone: process.env.TZ_NAME ?? 'Europe/Prague',
 
-  /** Sdílený token. Posílá ho appka i Apple Shortcut v hlavičce Authorization: Bearer …. */
-  token: required('HENRY_TOKEN', process.env.HENRY_TOKEN),
-
   vapid: {
     publicKey: required('VAPID_PUBLIC_KEY', process.env.VAPID_PUBLIC_KEY),
     privateKey: required('VAPID_PRIVATE_KEY', process.env.VAPID_PRIVATE_KEY),
@@ -30,11 +33,17 @@ export const config = {
     subject: process.env.VAPID_SUBJECT ?? 'mailto:henry@example.com',
   },
 
-  /** Provozní stav serveru: odběry, rozvrh, co už dnes odešlo. */
-  dataFile: resolve(process.env.DATA_FILE ?? './data/db.json'),
+  /** Databáze: účty, data uživatelů i provozní stav serveru. */
+  dbFile: resolve(process.env.DB_FILE ?? './data/henry.sqlite'),
 
-  /** Synchronizovaná data uživatele (dny, měření, úkoly). SQLite. */
-  syncFile: resolve(process.env.SYNC_FILE ?? './data/henry.sqlite'),
+  /** Odkud se servíruje appka. Prázdné = server je jen API. */
+  appDir: process.env.APP_DIR ?? '../app/dist',
+
+  /**
+   * Cookie se sezením se posílá jen po HTTPS. Na localhostu při vývoji to
+   * nejde, proto přepínač – v produkci musí zůstat zapnutý.
+   */
+  secureCookies: process.env.SECURE_COOKIES !== 'off',
 
   /** Povolené originy pro CORS. '*' = cokoli (appka běží na tvé doméně / Pages). */
   corsOrigins: (process.env.CORS_ORIGINS ?? '*').split(',').map((s) => s.trim()),

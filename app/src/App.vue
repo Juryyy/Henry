@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import TabBar from '@/components/TabBar.vue'
 import MilestoneToast from '@/components/MilestoneToast.vue'
+import SignInView from '@/views/SignInView.vue'
 import { applyUpdate, isIos, isStandalone, updateAvailable } from '@/lib/sw-client'
 import { maybeSync } from '@/lib/sync'
+import { authReady, signedIn } from '@/stores/auth'
 
 const route = useRoute()
-const showTabs = computed(() => !route.meta.fullscreen)
+// Dokud nevíme, jestli jsme přihlášení, nemá smysl ukazovat ani appku,
+// ani přihlášení – prázdná obrazovka na půl vteřiny je lepší než probliknutí.
+const showTabs = computed(() => signedIn.value && !route.meta.fullscreen)
 
 const showInstallHint = ref(false)
 
@@ -16,11 +20,17 @@ onMounted(() => {
   // ale jen jednou a jen když už uživatel prošel úvodním nastavením.
   const dismissed = localStorage.getItem('henry.installHintDismissed') === '1'
   showInstallHint.value = isIos() && !isStandalone() && !dismissed
-  void maybeSync()
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') void maybeSync()
   })
 })
+
+// Synchronizovat jde až po přihlášení, a to dorazí asynchronně po startu.
+// Proto se čeká na něj, ne na `onMounted` – jinak by první synchronizace
+// proběhla naprázdno a data z druhého zařízení by se objevila až za pět minut.
+watch(signedIn, (yes) => {
+  if (yes) void maybeSync()
+}, { immediate: true })
 
 function dismissHint(): void {
   localStorage.setItem('henry.installHintDismissed', '1')
@@ -43,7 +53,13 @@ function dismissHint(): void {
       <button class="btn btn-sm btn-primary" @click="applyUpdate">Načíst</button>
     </div>
 
-    <RouterView v-slot="{ Component }">
+    <template v-if="!authReady">
+      <div class="loading" />
+    </template>
+
+    <SignInView v-else-if="!signedIn" />
+
+    <RouterView v-else v-slot="{ Component }">
       <Transition name="fade" mode="out-in">
         <component :is="Component" :key="route.path" />
       </Transition>
@@ -55,6 +71,8 @@ function dismissHint(): void {
 </template>
 
 <style scoped>
+.loading { min-height: 100dvh; }
+
 .banner {
   display: flex;
   align-items: center;

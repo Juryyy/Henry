@@ -115,36 +115,26 @@ self.addEventListener('notificationclick', (event) => {
 
 /**
  * Push služba občas odběr zneplatní a pošle `pushsubscriptionchange`.
- * Stránka to sama nezachytí, takže si nový odběr vytvoříme tady a pošleme
- * ho na server. Klíč a adresa serveru jsou uložené v Cache Storage
- * (service worker nemá přístup k localStorage).
+ * Stránka to sama nezachytí, takže si nový odběr vytvoříme tady. Server je
+ * na stejné adrese jako appka, takže se přihlášení veze v cookie a service
+ * worker nepotřebuje znát žádný token.
  */
-const CONFIG_CACHE = 'henry-config'
-const CONFIG_URL = '/__henry_push_config'
-
-async function readConfig(): Promise<{ baseUrl: string; token: string; key: string } | null> {
-  try {
-    const cache = await caches.open(CONFIG_CACHE)
-    const res = await cache.match(CONFIG_URL)
-    return res ? ((await res.json()) as { baseUrl: string; token: string; key: string }) : null
-  } catch {
-    return null
-  }
-}
-
 self.addEventListener('pushsubscriptionchange', (event) => {
   event.waitUntil(
     (async () => {
-      const config = await readConfig()
-      if (!config?.baseUrl || !config.key) return
       try {
+        const res = await fetch('/api/config')
+        const { vapidPublicKey } = (await res.json()) as { vapidPublicKey?: string }
+        if (!vapidPublicKey) return
+
         const subscription = await self.registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: config.key,
+          applicationServerKey: vapidPublicKey,
         })
-        await fetch(`${config.baseUrl.replace(/\/$/, '')}/api/subscribe`, {
+        await fetch('/api/subscribe', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.token}` },
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ subscription, label: 'obnoveno automaticky' }),
         })
       } catch (err) {

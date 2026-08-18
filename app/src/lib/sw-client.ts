@@ -16,9 +16,6 @@
 import { ref } from 'vue'
 import { router } from '@/router'
 
-const CONFIG_CACHE = 'henry-config'
-const CONFIG_URL = '/__henry_push_config'
-
 export const swRegistration = ref<ServiceWorkerRegistration | null>(null)
 export const updateAvailable = ref(false)
 
@@ -129,21 +126,6 @@ export function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return output
 }
 
-/** Uloží konfiguraci tam, kam dosáhne i service worker (localStorage nemá). */
-async function writeSwConfig(baseUrl: string, token: string, key: string): Promise<void> {
-  try {
-    const cache = await caches.open(CONFIG_CACHE)
-    await cache.put(
-      CONFIG_URL,
-      new Response(JSON.stringify({ baseUrl, token, key }), {
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
-  } catch (err) {
-    console.warn('[henry] konfiguraci pro SW se nepodařilo uložit', err)
-  }
-}
-
 function deviceLabel(): string {
   const ua = navigator.userAgent
   if (/iPhone/.test(ua)) return 'iPhone'
@@ -163,12 +145,9 @@ export interface EnablePushResult {
  * Musí se volat přímo z kliknutí na tlačítko – jinak iOS dialog o povolení
  * vůbec nezobrazí.
  */
-export async function enablePush(baseUrl: string, token: string): Promise<EnablePushResult> {
+export async function enablePush(): Promise<EnablePushResult> {
   const blocked = pushBlockedReason()
   if (blocked) return { ok: false, error: blocked }
-  if (!baseUrl) return { ok: false, error: 'Nejdřív vyplň adresu serveru.' }
-
-  const api = baseUrl.replace(/\/$/, '')
 
   try {
     const permission = await Notification.requestPermission()
@@ -176,7 +155,7 @@ export async function enablePush(baseUrl: string, token: string): Promise<Enable
       return { ok: false, error: 'Bez povolení notifikací to nepůjde.' }
     }
 
-    const configRes = await fetch(`${api}/api/config`)
+    const configRes = await fetch('/api/config')
     if (!configRes.ok) return { ok: false, error: `Server odpověděl ${configRes.status}.` }
     const { vapidPublicKey } = (await configRes.json()) as { vapidPublicKey: string }
     if (!vapidPublicKey) return { ok: false, error: 'Server neposlal VAPID klíč.' }
@@ -193,31 +172,31 @@ export async function enablePush(baseUrl: string, token: string): Promise<Enable
       applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource,
     })
 
-    const res = await fetch(`${api}/api/subscribe`, {
+    const res = await fetch('/api/subscribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subscription, label: deviceLabel() }),
     })
     if (!res.ok) {
-      return { ok: false, error: res.status === 401 ? 'Neplatný token.' : `Server odpověděl ${res.status}.` }
+      return { ok: false, error: res.status === 401 ? 'Nejsi přihlášený.' : `Server odpověděl ${res.status}.` }
     }
 
-    await writeSwConfig(api, token, vapidPublicKey)
     return { ok: true }
   } catch (err) {
     return { ok: false, error: (err as Error).message }
   }
 }
 
-export async function disablePush(baseUrl: string, token: string): Promise<void> {
+export async function disablePush(): Promise<void> {
   const registration = swRegistration.value ?? (await navigator.serviceWorker.ready)
   const subscription = await registration.pushManager.getSubscription()
   if (!subscription) return
-  const api = baseUrl.replace(/\/$/, '')
   try {
-    await fetch(`${api}/api/unsubscribe`, {
+    await fetch('/api/unsubscribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ endpoint: subscription.endpoint }),
     })
   } catch {
@@ -233,15 +212,16 @@ export async function disablePush(baseUrl: string, token: string): Promise<void>
  * poslat aktuální odběr znovu na server. Server ho ukládá podle endpointu,
  * takže se nic nezduplikuje.
  */
-export async function resubscribeOnLaunch(baseUrl: string, token: string): Promise<void> {
-  if (!baseUrl || !token || !isPushSupported()) return
+export async function resubscribeOnLaunch(): Promise<void> {
+  if (!isPushSupported()) return
   try {
     const registration = swRegistration.value ?? (await navigator.serviceWorker.ready)
     const subscription = await registration.pushManager.getSubscription()
     if (!subscription) return
-    await fetch(`${baseUrl.replace(/\/$/, '')}/api/subscribe`, {
+    await fetch('/api/subscribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ subscription, label: deviceLabel() }),
     })
   } catch {

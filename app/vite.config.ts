@@ -69,6 +69,11 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // Při vývoji jede appka na 5173 a server na 8080. Aby se choval jako
+    // v produkci (jedna adresa, cookie projde), API se proxuje.
+    proxy: {
+      '/api': { target: 'http://127.0.0.1:8080', changeOrigin: false },
+    },
   },
   build: {
     target: 'es2022',

@@ -7,7 +7,7 @@ services:
     env_file:
       - .env
     environment:
-      # Aby logy a případné vlastní časové funkce seděly s TZ_NAME.
+      # Aby logy a časy notifikací seděly s TZ_NAME.
       TZ: ${TZ_NAME:-Europe/Prague}
     volumes:
       - henry-data:/app/data

@@ -4,9 +4,10 @@ dist/
 *.log
 
 # server
+.env
 server/.env
-server/data/*
-!server/data/.gitkeep
+data/
+server/data/
 server/dist/
 
 # výstup ze smoke.mjs

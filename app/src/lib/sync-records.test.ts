@@ -57,14 +57,6 @@ describe('výběr záznamů', () => {
     expect(kinds).toEqual(new Set(['day', 'measurement', 'task', 'task_log', 'bankruptcy', 'achievement', 'settings']))
   })
 
-  it('adresa serveru a token se nikam neposílají', () => {
-    const s = makeState((state) => {
-      state.settings.server = { baseUrl: 'https://doma.ts.net', token: 'tajne' }
-    })
-    expect(JSON.stringify(collectAll(s))).not.toContain('tajne')
-    expect(JSON.stringify(collectAll(s))).not.toContain('doma.ts.net')
-  })
-
   it('dluhová kniha se nepřenáší – je odvozená', () => {
     const s = makeState((state) => {
       state.ledger.push({

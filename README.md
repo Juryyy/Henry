@@ -3,6 +3,9 @@
 Osobní PWA na to, aby ses hýbal. Kroky s týdenním dluhem, třikrát denně patnáct
 minut cvičení, týdenní úkoly a notifikace, které chodí i když je appka zavřená.
 
+Nasadíš si ji na svůj server (Raspberry, VPS) – appka i API běží z jedné adresy,
+data leží u tebe a přístup je na účet a heslo.
+
 Zaměření: **zpevnit střed těla, zhubnout, dostat se rukama na zem.**
 
 | Dnešek | Cvičení | Kroky | Pokrok |
@@ -74,34 +77,42 @@ Nebo si je zapíšeš ručně, appka funguje i tak.
 
 **Pokrok** – váha, obvod pasu, kolik centimetrů ti chybí na zem, výdrž v prkně.
 
-**Synchronizace mezi zařízeními.** Se serverem se data drží i mimo telefon,
-takže výměnu telefonu přežijí a na notebooku vidíš totéž. Slučuje se **po
-záznamech**, ne přes celý stav: ranní odškrtnutý blok z telefonu a odpolední
-zápis kroků z notebooku přežijí oba. Server si po každé synchronizaci odkládá
-stav stranou, takže jde vrátit i to, co si sám rozbiješ.
+**Účet a synchronizace mezi zařízeními.** Přihlásíš se e-mailem a heslem;
+data se drží na serveru, takže výměnu telefonu přežijí a na notebooku vidíš
+totéž. Slučuje se **po záznamech**, ne přes celý stav: ranní odškrtnutý blok
+z telefonu a odpolední zápis kroků z notebooku přežijí oba. Server si po každé
+synchronizaci odkládá stav stranou, takže jde vrátit i to, co si sám rozbiješ.
+
+První účet si založíš při prvním otevření a tím se registrace zavře – kdo má
+přijít potom, dostane od tebe pozvánku. V nastavení vidíš přihlášená zařízení
+a kterékoli z nich můžeš odhlásit.
 
 ---
 
 ## Jak je to poskládané
 
 ```
-app/       PWA (Vue 3 + Vite + TypeScript). Data žijí v telefonu.
-  src/lib/       výpočty: dluh, série, plán dne, milníky – čisté funkce s testy
+app/       PWA (Vue 3 + Vite + TypeScript)
+  src/lib/       výpočty: dluh, série, plán dne, slučování – čisté funkce s testy
   src/views/     obrazovky
   e2e/           testy, které appku proklikají v prohlížeči
-server/    Malý Node/Express: posílá notifikace a přebírá kroky z Health.
+server/    Node/Express: účty, synchronizace, notifikace, příjem kroků
+Dockerfile Jeden obraz, ve kterém je appka i server
 ```
 
-Data se zapisují v telefonu a odtud tečou na server, který je slévá s tím,
-co přišlo z jiných zařízení. Server drží dvě oddělené věci: **provozní stav**
-(odběry notifikací, rozvrh, snímek dneška – JSON soubor) a **tvoje data**
-(dny, míry, úkoly – SQLite). Jsou to dvě různé věci s různým životním cyklem,
-proto dva soubory.
+Server servíruje i appku, takže všechno běží z jedné adresy. Není to jen
+pohodlí: přihlašovací cookie funguje čistě jen ze stejného původu a odpadá tím
+celý CORS.
 
-**Bez serveru appka funguje**: zapisuješ kroky ručně, odškrtáváš bloky, všechno
-počítá – jen data zůstanou v tom jednom telefonu a zálohu si musíš stáhnout
-ručně. Nefunguje ani notifikace v naplánovaný čas při zavřené appce.
-A to není nedodělek: na iOS neexistuje způsob, jak to udělat z prohlížeče.
+Data se zapisují v telefonu (pracovní kopie v `localStorage`, díky ní appka
+funguje offline) a odtud tečou na server, který je slévá s tím, co přišlo
+z jiných zařízení. Na serveru je **jeden SQLite soubor**: účty, data
+uživatelů i provozní stav notifikací.
+
+**Když je server zrovna nedostupný**, appka jede dál z místní kopie – zapisuješ
+kroky, odškrtáváš bloky, všechno počítá. Po návratu spojení se to dorovná.
+Nefunguje jen notifikace v naplánovaný čas při zavřené appce, a to není
+nedodělek: na iOS neexistuje způsob, jak to udělat z prohlížeče.
 Notification Triggers API se nikdy nedodělalo, Periodic Background Sync na iOS
 není a časovač v service workeru nepřežije jeho ukončení (~30 s nečinnosti).
 Notifikaci v konkrétní čas může spustit jedině něco, co v ten čas běží jinde.
@@ -113,88 +124,74 @@ Notifikaci v konkrétní čas může spustit jedině něco, co v ten čas běž�
 Potřebuješ Node 22.5+ (kvůli vestavěnému `node:sqlite`).
 
 ```bash
-# appka
-cd app
-npm install
-npm run dev          # http://localhost:5173
-
-# server (v druhém terminálu)
 cd server
 npm install
-npm run keys         # vypíše VAPID klíče a token
-cp .env.example .env # a vlož do něj výstup předchozího příkazu
-npm run dev          # http://localhost:8080
+npm run keys                    # vypíše VAPID klíče
+cp ../.env.example ../.env      # a vlož do něj výstup předchozího příkazu
+echo 'SECURE_COOKIES=off' >> ../.env   # bez HTTPS by cookie neprošla
+npm run dev                     # http://localhost:8080
+
+# appka (v druhém terminálu)
+cd app
+npm install
+npm run dev                     # http://localhost:5173, API si proxuje na 8080
 ```
 
-Pak v appce **Nastavení → Server**: adresa serveru a token. Tlačítko
-*Otestovat spojení* řekne, jestli to sedí.
+Otevři http://localhost:5173 a založ si první účet – registrace je otevřená,
+dokud tam žádný není.
 
 ### Testy a kontroly
 
 ```bash
 cd app
-npm test          # jednotkové testy výpočtů, plánu a slučování (113)
-npm run e2e       # e2e testy v prohlížeči (38) – projdou appku jako uživatel
+npm test          # jednotkové testy výpočtů, plánu a slučování (112)
+npm run e2e       # e2e testy v prohlížeči (43) – projdou appku jako uživatel
 npm run typecheck
 npm run build
 npm run screenshots  # přegeneruje obrázky v docs/screenshots
 
 cd ../server
-npm test          # plánovač, HTTP rozhraní, slučování dat, texty notifikací (106)
+npm test          # účty, HTTP rozhraní, plánovač, slučování dat (124)
 npm run typecheck
 npm run build
 ```
 
 E2E testy jedou proti produkčnímu buildu v mobilním rozlišení a kontrolují
-celé toky: úvodního průvodce, zápis kroků, průchod blokem cvičení včetně
-odpočtu, přenos dluhu, bankrot, měření, milníky, zálohu i registraci service
-workeru. Běží i v CI (`.github/workflows/ci.yml`).
+celé toky: přihlášení, úvodního průvodce, zápis kroků, průchod blokem cvičení
+včetně odpočtu, přenos dluhu, bankrot, měření, milníky, synchronizaci mezi
+zařízeními i registraci service workeru. Běží i v CI
+(`.github/workflows/ci.yml`).
 
 ---
 
 ## Nasazení
 
-### Appka
-
-Statický build, hodí se kamkoli. Na GitHub Pages je připravený workflow
-(`.github/workflows/deploy-pages.yml`) – zapni Pages v nastavení repozitáře
-(Settings → Pages → Source: GitHub Actions) a při pushi do `main` se to nasadí
-samo na <https://juryyy.github.io/Henry/>.
-
-Bez toho přepínače build projde, ale nasazení skončí na `404 Not Found` –
-Pages se nedají zapnout z workflow, musí se cvaknout v nastavení repozitáře.
-
-Ručně kamkoli jinam:
+Jeden příkaz, jeden obraz – uvnitř je appka i server:
 
 ```bash
-cd app
-BASE_PATH=/ npm run build   # obsah dist/ nahraj na hosting
-```
-
-> **Musí to běžet přes HTTPS.** Bez něj nejde service worker ani push, a iOS
-> navíc odmítne self-signed certifikát s nicneříkající chybou.
-
-### Server
-
-Kdekoli, kde běží Node a je to dostupné přes HTTPS. **Nejlevnější rozumná
-varianta je Raspberry doma za tunelem – návod krok za krokem je
-v [docs/raspberry.md](docs/raspberry.md).** Přiložený je Dockerfile i compose:
-
-```bash
-cd server
+git clone https://github.com/Juryyy/Henry.git
+cd Henry
+cp .env.example .env    # a vyplň VAPID klíče (cd server && npm run keys)
 docker compose up -d
 ```
 
-Server drží data v jednom JSON souboru (`data/db.json`). Je to appka pro
-jednoho člověka, databáze by tu byla na parádu.
+Pak už jen veřejná HTTPS adresa (Tailscale Funnel zdarma a bez vlastní domény,
+Cloudflare Tunnel, nebo Caddy na VPS) a první účet si založíš rovnou v prohlížeči.
+
+**Návod krok za krokem je v [docs/nasazeni.md](docs/nasazeni.md)** – Raspberry
+i VPS, včetně tunelů a řešení nejčastějších problémů.
+
+> **Musí to běžet přes HTTPS.** Bez něj neprojde přihlašovací cookie, nejde
+> service worker ani push, a iOS navíc odmítne self-signed certifikát
+> s nicneříkající chybou.
 
 ### Přidání na plochu (iPhone)
 
-1. Otevři adresu appky v **Safari** (ne v Chromu – ten na iOS neumí přidat
+1. Otevři adresu serveru v **Safari** (ne v Chromu – ten na iOS neumí přidat
    PWA tak, aby fungovaly notifikace).
 2. Sdílet → **Přidat na plochu**.
-3. Spusť appku **z ikony**, ne ze Safari.
-4. Nastavení → Server → vyplň adresu a token → **Zapnout notifikace**.
+3. Spusť appku **z ikony**, ne ze Safari, a přihlas se.
+4. Nastavení → Notifikace → **Zapnout notifikace**.
 5. *Test ze serveru* – za chvíli to musí cinknout.
 
 Bez kroku 2 a 3 push nefunguje a nejde to obejít: v Safari na kartě objekt
@@ -243,11 +240,23 @@ to a běž za fyzioterapeutem.
 
 ## Poznámky k bezpečnosti
 
-- Token se posílá jen v hlavičce `Authorization`, nikdy v URL – query stringy
-  končí v logu proxy a v hlavičce `Referer`.
+- **Hesla** se hašují scryptem s náhodnou solí. V databázi není nic, z čeho by
+  šlo heslo získat.
+- **Sezení** žijí v `httpOnly` cookie – žádný skript se k nim nedostane –
+  a v databázi jen jako otisk. `SameSite=Lax` znamená, že cizí web cookie
+  k požadavku nepřipojí; to je zároveň obrana proti CSRF.
+- **Změna hesla odhlásí ostatní zařízení.** Jinak by změna po prozrazení hesla
+  nic neřešila.
+- **Registrace se po prvním účtu zavře** a dál se dovnitř dá jen na pozvánku.
+  Otevřená registrace na veřejné adrese je pozvánka pro kohokoli.
+- **Přihlašování má strop pokusů** (deset za deset minut z jedné adresy), aby
+  se heslo nedalo zkoušet hrubou silou.
+- **Token pro Zkratku** je vázaný na účet, ukáže se jednou, ukládá se jen jako
+  otisk a dá se zrušit bez změny hesla.
 - Ověření běží **před** parsováním těla požadavku, takže nepřihlášený požadavek
   nedonutí server alokovat paměť.
-- Token se porovnává v konstantním čase přes hash, takže neprozradí ani délku.
+- Účty jsou od sebe oddělené na úrovni databáze a hlídají to testy – „uživatel
+  A nesmí vidět data uživatele B" je věc, která se klikáním neobjeví.
 - VAPID klíče vygeneruj jednou a nech je být. Přegenerování zneplatní všechny
   existující odběry.
 - `.env` a `data/` do gitu nepatří (jsou v `.gitignore`).
@@ -257,16 +266,16 @@ to a běž za fyzioterapeutem.
 ## Data
 
 V telefonu leží pracovní kopie v `localStorage`; appka díky ní funguje offline
-a reaguje okamžitě. Se serverem se tatáž data drží i v SQLite, takže výměnu
+a reaguje okamžitě. Tatáž data se drží i na serveru v SQLite, takže výměnu
 telefonu přežijí.
 
 Slučování je **last-write-wins po záznamech**: každý den, míra i úkol nese čas
 poslední změny a novější zápis vyhrává. Dluhová kniha se schválně nepřenáší –
 je odvozená z dnů a nastavení, takže si ji každé zařízení po sloučení spočítá
-samo. Adresa serveru a token se taky nepřenášejí; patří zařízení, ne datům.
+samo.
 
 Smazané záznamy cestují jako náhrobek, jinak by je zastaralé zařízení vzkřísilo.
 
-Bez serveru je jediná pojistka stažená záloha (Nastavení → Data). Sedmidenní
-mazání úložiště, kterým Safari trestá běžné weby, se na appky přidané na plochu
-nevztahuje – data zmizí až se smazanou ikonou.
+Stažená záloha (Nastavení → Data) je pojistka navíc – hodí se, když chceš data
+mít i mimo server. Sedmidenní mazání úložiště, kterým Safari trestá běžné weby,
+se na appky přidané na plochu nevztahuje.

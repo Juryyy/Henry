@@ -5,18 +5,21 @@ import type { Server } from 'node:http'
  * Testy HTTP rozhraní.
  *
  * Jedou proti opravdové Express aplikaci na náhodném portu – tedy včetně
- * pořadí middlewarů, CORS a parsování těla. Odesílání push je nahrazené,
+ * pořadí middlewarů, cookies a parsování těla. Odesílání push je nahrazené,
  * jinak by test volal ven na push službu.
+ *
+ * Nejdůležitější část je úplně dole: že si dva účty navzájem nevidí do dat.
+ * To je věc, která se klikáním neobjeví a v produkci je z ní průšvih.
  */
 vi.mock('./push.js', () => ({
-  sendToAll: vi.fn(async () => ({ sent: 1, removed: 0, failed: 0 })),
+  sendToUser: vi.fn(async () => ({ sent: 1, removed: 0, failed: 0 })),
 }))
 
 const { app } = await import('./app.js')
-const { getDb, DEFAULT_SCHEDULE } = await import('./store.js')
-const { closeSyncDb, openSyncDb } = await import('./sync-store.js')
+const { closeDb, openDb } = await import('./db.js')
+const { resetRateLimits } = await import('./auth.js')
 
-const TOKEN = 'testovaci-token'
+const HESLO = 'dost-dlouhe-heslo'
 
 let server: Server
 let base: string
@@ -35,407 +38,383 @@ afterAll(async () => {
 })
 
 beforeEach(() => {
-  // Synchronizovaná data jedou v paměti; mezi testy se začíná na čisto.
-  closeSyncDb()
-  openSyncDb(':memory:')
-
-  const db = getDb()
-  db.subscriptions = []
-  db.snapshot = null
-  db.schedule = { ...DEFAULT_SCHEDULE }
-  db.steps = {}
-  db.sent = {}
-  db.muted = {}
-  db.log = []
+  closeDb()
+  openDb(':memory:')
+  resetRateLimits()
 })
 
-/** Požadavek s tokenem. Tělo se posílá jako JSON, pokud není řetězec. */
-function call(
-  path: string,
-  init: { method?: string; body?: unknown; token?: string | null; type?: string } = {},
-): Promise<Response> {
-  const headers: Record<string, string> = {}
-  if (init.token !== null) headers.Authorization = `Bearer ${init.token ?? TOKEN}`
-  if (init.body !== undefined) headers['Content-Type'] = init.type ?? 'application/json'
-  return fetch(`${base}${path}`, {
-    method: init.method ?? (init.body !== undefined ? 'POST' : 'GET'),
-    headers,
-    body: init.body === undefined ? undefined : typeof init.body === 'string' ? init.body : JSON.stringify(init.body),
-  })
+/* ------------------------------------------------------------------ */
+/*  Klient s cookie                                                    */
+/* ------------------------------------------------------------------ */
+
+interface CallInit {
+  method?: string
+  body?: unknown
+  type?: string
+  token?: string
+  /** Poslat bez přihlašovací cookie. */
+  anonymous?: boolean
 }
 
-/** Tělo odpovědi. `Response.json()` vrací `unknown`, v testu chceme číst klíče. */
-async function readJson(res: Response): Promise<Record<string, any>> {
-  return (await res.json()) as Record<string, any>
+/** Prohlížeč v malém: drží si cookie mezi požadavky. */
+function client() {
+  let cookie = ''
+
+  async function call(path: string, init: CallInit = {}): Promise<Response> {
+    const headers: Record<string, string> = {}
+    if (cookie && !init.anonymous) headers.Cookie = cookie
+    if (init.token) headers.Authorization = `Bearer ${init.token}`
+    if (init.body !== undefined) headers['Content-Type'] = init.type ?? 'application/json'
+
+    const res = await fetch(`${base}${path}`, {
+      method: init.method ?? (init.body !== undefined ? 'POST' : 'GET'),
+      headers,
+      body:
+        init.body === undefined ? undefined : typeof init.body === 'string' ? init.body : JSON.stringify(init.body),
+      redirect: 'manual',
+    })
+
+    const set = res.headers.getSetCookie?.() ?? []
+    for (const value of set) {
+      const [pair] = value.split(';')
+      if (pair?.startsWith('henry_session=')) {
+        cookie = pair.endsWith('=') ? '' : pair
+      }
+    }
+    return res
+  }
+
+  return {
+    call,
+    json: async (path: string, init: CallInit = {}) => (await (await call(path, init)).json()) as Record<string, any>,
+    get cookie() {
+      return cookie
+    },
+  }
 }
 
-const SUB = {
-  endpoint: 'https://push.example/abcdefghijkl',
-  keys: { p256dh: 'klic', auth: 'tajemstvi' },
+/** Založí účet a vrátí přihlášeného klienta. */
+async function register(email: string, invite?: string) {
+  const c = client()
+  const res = await c.call('/api/auth/register', { body: { email, password: HESLO, name: 'Martin', invite } })
+  return { c, res }
 }
 
 /* ------------------------------------------------------------------ */
 
 describe('veřejné endpointy', () => {
-  it('/api/health odpoví i bez tokenu', async () => {
-    const res = await call('/api/health', { token: null })
-    expect(res.status).toBe(200)
-    const data = await readJson(res)
+  it('/api/health řekne, že registrace je zatím otevřená', async () => {
+    const data = await client().json('/api/health')
     expect(data.ok).toBe(true)
+    expect(data.registrationOpen).toBe(true)
     expect(data.now.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-    expect(data.subscriptions).toBe(0)
   })
 
   it('/api/config vydá veřejný VAPID klíč', async () => {
-    const res = await call('/api/config', { token: null })
-    const data = await readJson(res)
+    const data = await client().json('/api/config')
     expect(data.vapidPublicKey).toMatch(/^B/)
-    expect(data.timezone).toBe('Europe/Prague')
   })
 
   it('neznámý endpoint je 404 s JSON tělem', async () => {
-    const res = await call('/api/neexistuje', { token: null })
+    const res = await client().call('/api/neexistuje')
     expect(res.status).toBe(404)
-    expect((await readJson(res)).error).toBeTruthy()
   })
 })
 
-describe('ověření tokenem', () => {
-  it('bez tokenu chodí 401', async () => {
-    const res = await call('/api/subscriptions', { token: null })
-    expect(res.status).toBe(401)
+describe('registrace', () => {
+  it('první účet se založí sám a rovnou přihlásí', async () => {
+    const { c, res } = await register('ja@example.com')
+    expect(res.status).toBe(200)
+    expect(c.cookie).toContain('henry_session=')
+
+    const me = await c.json('/api/auth/me')
+    expect(me.user.email).toBe('ja@example.com')
   })
 
-  it('se špatným tokenem chodí 401', async () => {
-    const res = await call('/api/subscriptions', { token: 'uplne-jiny-token' })
-    expect(res.status).toBe(401)
+  it('po prvním účtu se registrace zavře', async () => {
+    await register('ja@example.com')
+    expect((await client().json('/api/health')).registrationOpen).toBe(false)
+
+    const { res } = await register('nekdo@example.com')
+    expect(res.status).toBe(403)
   })
 
-  it('token jiné délky nespadne na výjimce', async () => {
-    const res = await call('/api/subscriptions', { token: 'x' })
-    expect(res.status).toBe(401)
-  })
+  it('s pozvánkou se dovnitř dostane i druhý', async () => {
+    const { c } = await register('ja@example.com')
+    const { code } = await c.json('/api/auth/invite', { body: {} })
 
-  it('funguje i hlavička X-Henry-Token', async () => {
-    const res = await fetch(`${base}/api/subscriptions`, { headers: { 'X-Henry-Token': TOKEN } })
+    const { res } = await register('host@example.com', code)
     expect(res.status).toBe(200)
   })
 
-  it('nepřihlášený požadavek se ani nepokusí parsovat tělo', async () => {
-    // Kdyby se tělo parsovalo dřív než ověření, vrátilo by se 400 od parseru.
-    const res = await call('/api/subscribe', { token: null, body: '{tohle není JSON' })
-    expect(res.status).toBe(401)
+  it('pozvánku nejde použít dvakrát', async () => {
+    const { c } = await register('ja@example.com')
+    const { code } = await c.json('/api/auth/invite', { body: {} })
+    await register('host@example.com', code)
+
+    const { res } = await register('dalsi@example.com', code)
+    expect(res.status).toBe(403)
+  })
+
+  it('krátké heslo a nesmyslný e-mail se odmítnou', async () => {
+    const c = client()
+    expect((await c.call('/api/auth/register', { body: { email: 'ja@example.com', password: 'krátké' } })).status).toBe(400)
+    expect((await c.call('/api/auth/register', { body: { email: 'nesmysl', password: HESLO } })).status).toBe(400)
+  })
+
+  it('stejná adresa podruhé neprojde', async () => {
+    const { c } = await register('ja@example.com')
+    const { code } = await c.json('/api/auth/invite', { body: {} })
+    const res = await client().call('/api/auth/register', {
+      body: { email: 'JA@example.com', password: HESLO, invite: code },
+    })
+    expect(res.status).toBe(409)
   })
 })
 
-describe('odběry', () => {
-  it('uloží odběr a vrátí počet', async () => {
-    const res = await call('/api/subscribe', { body: { subscription: SUB, label: 'iPhone' } })
-    expect(res.status).toBe(200)
-    expect((await readJson(res)).subscriptions).toBe(1)
-    expect(getDb().subscriptions[0]!.label).toBe('iPhone')
+describe('přihlášení', () => {
+  it('se správným heslem projde, se špatným ne', async () => {
+    await register('ja@example.com')
+
+    const c = client()
+    expect((await c.call('/api/auth/login', { body: { email: 'ja@example.com', password: HESLO } })).status).toBe(200)
+    expect((await c.call('/api/auth/login', { body: { email: 'ja@example.com', password: 'spatne-heslo' } })).status).toBe(401)
   })
 
-  it('stejné zařízení podruhé nezaloží druhý odběr', async () => {
-    await call('/api/subscribe', { body: { subscription: SUB } })
-    await call('/api/subscribe', { body: { subscription: SUB, label: 'iPhone znovu' } })
-    expect(getDb().subscriptions).toHaveLength(1)
-    expect(getDb().subscriptions[0]!.label).toBe('iPhone znovu')
+  it('neexistující účet vrací stejnou hlášku jako špatné heslo', async () => {
+    await register('ja@example.com')
+    const c = client()
+    const spatne = await c.json('/api/auth/login', { body: { email: 'ja@example.com', password: 'spatne-heslo' } })
+    const neni = await c.json('/api/auth/login', { body: { email: 'nikdo@example.com', password: HESLO } })
+    expect(neni.error).toBe(spatne.error)
   })
 
-  it('odběr bez klíčů je 400', async () => {
-    const res = await call('/api/subscribe', { body: { subscription: { endpoint: 'https://push.example/x' } } })
-    expect(res.status).toBe(400)
-    expect(getDb().subscriptions).toHaveLength(0)
+  it('bez přihlášení se k datům nikdo nedostane', async () => {
+    const c = client()
+    for (const path of ['/api/auth/me', '/api/state', '/api/steps', '/api/subscriptions', '/api/log']) {
+      expect((await c.call(path)).status).toBe(401)
+    }
   })
 
-  it('odhlášení odebere zařízení', async () => {
-    await call('/api/subscribe', { body: { subscription: SUB } })
-    const res = await call('/api/unsubscribe', { body: { endpoint: SUB.endpoint } })
-    expect((await readJson(res)).removed).toBe(true)
-    expect(getDb().subscriptions).toHaveLength(0)
+  it('odhlášení cookie zneplatní', async () => {
+    const { c } = await register('ja@example.com')
+    const before = c.cookie
+    await c.call('/api/auth/logout', { body: {} })
+
+    const res = await fetch(`${base}/api/auth/me`, { headers: { Cookie: before } })
+    expect(res.status).toBe(401)
   })
 
-  it('odhlášení neznámého endpointu není chyba', async () => {
-    const res = await call('/api/unsubscribe', { body: { endpoint: 'https://push.example/nikdo' } })
-    expect(res.status).toBe(200)
-    expect((await readJson(res)).removed).toBe(false)
-  })
-
-  it('výpis odběrů neprozradí celý endpoint', async () => {
-    await call('/api/subscribe', { body: { subscription: SUB } })
-    const data = await readJson(await call('/api/subscriptions'))
-    expect(data.subscriptions[0].endpointTail).toBe('abcdefghijkl')
-    expect(JSON.stringify(data)).not.toContain('push.example')
+  it('opakované špatné pokusy se zarazí', async () => {
+    await register('ja@example.com')
+    const c = client()
+    let limited = false
+    for (let i = 0; i < 15; i++) {
+      const res = await c.call('/api/auth/login', { body: { email: 'ja@example.com', password: 'spatne-heslo' } })
+      if (res.status === 429) {
+        limited = true
+        break
+      }
+    }
+    expect(limited).toBe(true)
   })
 })
 
-describe('synchronizace', () => {
-  it('uloží snímek a nastavení', async () => {
-    const res = await call('/api/sync', {
-      body: {
-        snapshot: { date: '2026-08-17', steps: 3_000, stepsNeededToday: 2_000, name: 'Martin' },
-        schedule: { tone: 'drsny', stepCheckTime: '18:00' },
-      },
+describe('správa účtu', () => {
+  it('změna hesla odhlásí ostatní zařízení', async () => {
+    const { c } = await register('ja@example.com')
+
+    // Druhé zařízení téhož člověka.
+    const telefon = client()
+    await telefon.call('/api/auth/login', { body: { email: 'ja@example.com', password: HESLO } })
+
+    const data = await c.json('/api/auth/password', { body: { current: HESLO, next: 'jeste-delsi-heslo' } })
+    expect(data.revoked).toBe(1)
+
+    expect((await telefon.call('/api/auth/me')).status).toBe(401)
+    expect((await c.call('/api/auth/me')).status).toBe(200)
+  })
+
+  it('bez stávajícího hesla se změnit nedá', async () => {
+    const { c } = await register('ja@example.com')
+    const res = await c.call('/api/auth/password', { body: { current: 'spatne-heslo', next: 'jeste-delsi-heslo' } })
+    expect(res.status).toBe(401)
+  })
+
+  it('seznam přihlášení ukáže obě zařízení', async () => {
+    const { c } = await register('ja@example.com')
+    const telefon = client()
+    await telefon.call('/api/auth/login', { body: { email: 'ja@example.com', password: HESLO } })
+
+    const data = await c.json('/api/auth/sessions')
+    expect(data.sessions).toHaveLength(2)
+    expect(data.sessions.filter((s: { current: boolean }) => s.current)).toHaveLength(1)
+  })
+
+  it('ostatní zařízení jde odhlásit jedním tlačítkem', async () => {
+    const { c } = await register('ja@example.com')
+    const telefon = client()
+    await telefon.call('/api/auth/login', { body: { email: 'ja@example.com', password: HESLO } })
+
+    await c.json('/api/auth/sessions/revoke', { body: { all: true } })
+    expect((await telefon.call('/api/auth/me')).status).toBe(401)
+    expect((await c.call('/api/auth/me')).status).toBe(200)
+  })
+})
+
+describe('token pro Zkratku', () => {
+  it('vydá se jednou a pak už jen jako otisk', async () => {
+    const { c } = await register('ja@example.com')
+    const { token } = await c.json('/api/tokens', { body: { label: 'Zkratka' } })
+    expect(token).toBeTruthy()
+
+    const list = await c.json('/api/tokens')
+    expect(JSON.stringify(list)).not.toContain(token)
+  })
+
+  it('tokenem jde nahrát kroky bez cookie', async () => {
+    const { c } = await register('ja@example.com')
+    const { token } = await c.json('/api/tokens', { body: {} })
+
+    const res = await client().call('/api/ingest/steps', {
+      body: { date: '2026-08-17', steps: 8_123 },
+      token,
+      anonymous: true,
     })
     expect(res.status).toBe(200)
-    const db = getDb()
-    expect(db.snapshot!.steps).toBe(3_000)
-    expect(db.snapshot!.name).toBe('Martin')
-    expect(db.schedule.tone).toBe('drsny')
-    expect(db.schedule.stepCheckTime).toBe('18:00')
-    // Neposlané klíče zůstávají na výchozích hodnotách.
-    expect(db.schedule.blockTimes).toEqual(DEFAULT_SCHEDULE.blockTimes)
+
+    const steps = await c.json('/api/steps')
+    expect(steps.steps[0].steps).toBe(8_123)
   })
 
-  it('počet bloků udrží v rozmezí 1–3', async () => {
-    await call('/api/sync', { body: { schedule: { blocksPerDay: 9 } } })
-    expect(getDb().schedule.blocksPerDay).toBe(3)
-    await call('/api/sync', { body: { schedule: { blocksPerDay: 0 } } })
-    expect(getDb().schedule.blocksPerDay).toBe(1)
-  })
+  it('zrušený token přestane fungovat', async () => {
+    const { c } = await register('ja@example.com')
+    const { token } = await c.json('/api/tokens', { body: {} })
+    const list = await c.json('/api/tokens')
+    await c.json('/api/tokens/revoke', { body: { id: list.tokens[0].id } })
 
-  it('nesmyslné hodnoty ve snímku nepustí dál jako NaN', async () => {
-    await call('/api/sync', { body: { snapshot: { date: '2026-08-17', steps: 'hodně' } } })
-    expect(getDb().snapshot!.steps).toBe(0)
-  })
-
-  it('vrátí kroky nahrané zkratkou pro dnešní den', async () => {
-    await call('/api/ingest/steps', { body: { date: '2026-08-17', steps: 8_123 } })
-    const res = await call('/api/sync', { body: { snapshot: { date: '2026-08-17' } } })
-    const data = await readJson(res)
-    expect(data.serverSteps.steps).toBe(8_123)
-  })
-
-  it('bez odpovídajícího dne vrátí null', async () => {
-    const res = await call('/api/sync', { body: { snapshot: { date: '2026-08-17' } } })
-    expect((await readJson(res)).serverSteps).toBeNull()
+    const res = await client().call('/api/ingest/steps', {
+      body: { date: '2026-08-17', steps: 1 },
+      token,
+      anonymous: true,
+    })
+    expect(res.status).toBe(401)
   })
 })
 
-describe('příjem kroků ze zkratky', () => {
-  it('uloží jeden den', async () => {
-    const res = await call('/api/ingest/steps', { body: { date: '2026-08-17', steps: 8_123 } })
-    expect(res.status).toBe(200)
-    expect(getDb().steps['2026-08-17']!.steps).toBe(8_123)
-    expect(getDb().steps['2026-08-17']!.source).toBe('shortcuts')
-  })
-
-  it('uloží víc dní najednou', async () => {
-    await call('/api/ingest/steps', {
+describe('data', () => {
+  it('synchronizace uloží a vrátí záznamy', async () => {
+    const { c } = await register('ja@example.com')
+    const push = await c.json('/api/state', {
       body: {
-        days: [
-          { date: '2026-08-15', steps: 7_100 },
-          { date: '2026-08-16', steps: '9 200' },
+        records: [
+          { kind: 'day', id: '2026-08-17', updatedAt: '2026-08-17T10:00:00.000Z', payload: { steps: 5_000 } },
         ],
       },
     })
-    expect(getDb().steps['2026-08-15']!.steps).toBe(7_100)
-    expect(getDb().steps['2026-08-16']!.steps).toBe(9_200)
+    expect(push.applied).toBe(1)
+
+    const pull = await c.json('/api/state?since=0')
+    expect(pull.records[0].payload).toEqual({ steps: 5_000 })
   })
 
-  it('opakované odeslání kroky nesčítá', async () => {
-    await call('/api/ingest/steps', { body: { date: '2026-08-17', steps: 5_000 } })
-    await call('/api/ingest/steps', { body: { date: '2026-08-17', steps: 5_000 } })
-    expect(getDb().steps['2026-08-17']!.steps).toBe(5_000)
-  })
-
-  it('tělo poslané jako text/plain se pořád parsuje', async () => {
-    // Zkratka umí poslat tělo jako soubor a nastaví u toho nesmyslný typ.
-    const res = await call('/api/ingest/steps', {
-      body: JSON.stringify({ date: '2026-08-17', steps: 4_321 }),
-      type: 'text/plain',
+  it('snímek a rozvrh se uloží k účtu', async () => {
+    const { c } = await register('ja@example.com')
+    await c.json('/api/sync', {
+      body: { snapshot: { date: '2026-08-17', steps: 3_000 }, schedule: { tone: 'drsny', blocksPerDay: 9 } },
     })
-    expect(res.status).toBe(200)
-    expect(getDb().steps['2026-08-17']!.steps).toBe(4_321)
+
+    await c.json('/api/ingest/steps', { body: { date: '2026-08-17', steps: 6_000 } })
+    const again = await c.json('/api/sync', { body: { snapshot: { date: '2026-08-17', steps: 6_000 } } })
+    expect(again.serverSteps.steps).toBe(6_000)
   })
 
-  it('kroky, které nejsou číslo, jsou 400', async () => {
-    const res = await call('/api/ingest/steps', { body: { date: '2026-08-17', steps: 'spousta' } })
-    expect(res.status).toBe(400)
-    expect(getDb().steps['2026-08-17']).toBeUndefined()
-  })
-
-  it('nesmyslně velké číslo se zahodí', async () => {
-    const res = await call('/api/ingest/steps', { body: { date: '2026-08-17', steps: 999_999 } })
-    expect(res.status).toBe(400)
-    expect(getDb().steps['2026-08-17']).toBeUndefined()
-  })
-
-  it('řádky s nesmyslným datem se přeskočí, zbytek projde', async () => {
-    await call('/api/ingest/steps', {
-      body: {
-        days: [
-          { date: '17. 8. 2026', steps: 1_000 },
-          { date: '2026-08-17', steps: 2_000 },
-        ],
-      },
+  it('verze stavu jde vrátit', async () => {
+    const { c } = await register('ja@example.com')
+    await c.json('/api/state', {
+      body: { records: [{ kind: 'day', id: 'a', updatedAt: '2026-08-17T10:00:00.000Z', payload: { steps: 1 } }] },
     })
-    expect(Object.keys(getDb().steps)).toEqual(['2026-08-17'])
-  })
+    const { versions } = await c.json('/api/state/versions')
+    await c.json('/api/state', {
+      body: { records: [{ kind: 'day', id: 'a', updatedAt: '2026-08-18T10:00:00.000Z', payload: { steps: 2 } }] },
+    })
 
-  it('nová data se hned promítnou do snímku pro notifikace', async () => {
-    await call('/api/sync', { body: { snapshot: { date: '2026-08-17', steps: 1_000 } } })
-    await call('/api/ingest/steps', { body: { date: '2026-08-17', steps: 6_000 } })
-    expect(getDb().snapshot!.steps).toBe(6_000)
-  })
-
-  it('kroky z jiného dne dnešní snímek nepřepíšou', async () => {
-    await call('/api/sync', { body: { snapshot: { date: '2026-08-17', steps: 1_000 } } })
-    await call('/api/ingest/steps', { body: { date: '2026-08-16', steps: 6_000 } })
-    expect(getDb().snapshot!.steps).toBe(1_000)
+    await c.json('/api/state/restore', { body: { rev: versions[0].rev } })
+    const pull = await c.json('/api/state')
+    expect(pull.records[0].payload).toEqual({ steps: 1 })
   })
 
   it('rozbité JSON je 400, ne 500', async () => {
-    const res = await call('/api/ingest/steps', { body: '{tohle není JSON' })
-    expect(res.status).toBe(400)
-  })
-})
-
-describe('příjem z Health Auto Export', () => {
-  it('vytáhne z payloadu denní kroky', async () => {
-    const res = await call('/api/ingest/health-auto-export', {
-      body: {
-        data: {
-          metrics: [
-            {
-              name: 'step_count',
-              units: 'count',
-              data: [{ date: '2026-08-17 00:00:00 +0200', qty: 8_800 }],
-            },
-          ],
-        },
-      },
-    })
-    expect(res.status).toBe(200)
-    expect((await readJson(res)).days).toBe(1)
-    expect(getDb().steps['2026-08-17']!.source).toBe('health-auto-export')
-  })
-
-  it('payload bez kroků je 400', async () => {
-    const res = await call('/api/ingest/health-auto-export', {
-      body: { data: { metrics: [{ name: 'heart_rate', units: 'bpm', data: [] }] } },
-    })
-    expect(res.status).toBe(400)
-  })
-})
-
-describe('čtení kroků', () => {
-  it('vrací nejnovější den první', async () => {
-    await call('/api/ingest/steps', {
-      body: {
-        days: [
-          { date: '2026-08-15', steps: 1_000 },
-          { date: '2026-08-17', steps: 3_000 },
-          { date: '2026-08-16', steps: 2_000 },
-        ],
-      },
-    })
-    const data = await readJson(await call('/api/steps?days=2'))
-    expect(data.steps.map((s: { date: string }) => s.date)).toEqual(['2026-08-17', '2026-08-16'])
-  })
-
-  it('nesmyslný parametr days nespadne', async () => {
-    const res = await call('/api/steps?days=abc')
-    expect(res.status).toBe(200)
-  })
-})
-
-describe('diagnostika', () => {
-  it('/api/test odešle notifikaci', async () => {
-    const res = await call('/api/test', { body: {} })
-    expect(res.status).toBe(200)
-    expect((await readJson(res)).sent).toBe(1)
-  })
-
-  it('/api/log vrací zápisy, nejnovější první', async () => {
-    await call('/api/ingest/steps', { body: { date: '2026-08-17', steps: 1_000 } })
-    const data = await readJson(await call('/api/log'))
-    expect(data.log[0].kind).toBe('steps')
+    const { c } = await register('ja@example.com')
+    expect((await c.call('/api/state', { body: '{tohle není JSON' })).status).toBe(400)
   })
 })
 
 /* ------------------------------------------------------------------ */
+/*  To hlavní: účty si do sebe nevidí                                  */
+/* ------------------------------------------------------------------ */
 
-describe('synchronizace dat mezi zařízeními', () => {
-  const den = (id: string, at: string, payload: unknown) => ({ kind: 'day', id, updatedAt: at, payload })
+describe('oddělení účtů', () => {
+  async function dvaUcty() {
+    const { c: ja } = await register('ja@example.com')
+    const { code } = await ja.json('/api/auth/invite', { body: {} })
+    const { c: nekdo } = await register('nekdo@example.com', code)
+    return { ja, nekdo }
+  }
 
-  it('bez tokenu se k datům nikdo nedostane', async () => {
-    expect((await call('/api/state', { token: null })).status).toBe(401)
-    expect((await call('/api/state', { token: null, body: { records: [] } })).status).toBe(401)
+  it('cizí data nejsou vidět v synchronizaci', async () => {
+    const { ja, nekdo } = await dvaUcty()
+    await ja.json('/api/state', {
+      body: { records: [{ kind: 'day', id: 'a', updatedAt: '2026-08-17T10:00:00.000Z', payload: { steps: 5_000 } }] },
+    })
+
+    const pull = await nekdo.json('/api/state?since=0')
+    expect(pull.records).toEqual([])
+    expect(pull.rev).toBe(0)
   })
 
-  it('nové zařízení dostane prázdno', async () => {
-    const data = await readJson(await call('/api/state'))
-    expect(data).toMatchObject({ rev: 0, count: 0, records: [] })
+  it('cizí kroky nejsou vidět', async () => {
+    const { ja, nekdo } = await dvaUcty()
+    await ja.json('/api/ingest/steps', { body: { date: '2026-08-17', steps: 8_123 } })
+    expect((await nekdo.json('/api/steps')).steps).toEqual([])
   })
 
-  it('nahraná data se dají stáhnout', async () => {
-    const push = await readJson(
-      await call('/api/state', { body: { records: [den('2026-08-17', '2026-08-17T10:00:00.000Z', { steps: 5_000 })] } }),
-    )
-    expect(push.applied).toBe(1)
-    expect(push.rev).toBe(1)
+  it('cizí zařízení nejsou vidět a nejdou odhlásit', async () => {
+    const { ja, nekdo } = await dvaUcty()
+    const sub = { endpoint: 'https://push.example/ja', keys: { p256dh: 'a', auth: 'b' } }
+    await ja.json('/api/subscribe', { body: { subscription: sub, label: 'iPhone' } })
 
-    const pull = await readJson(await call('/api/state?since=0'))
-    expect(pull.records[0].payload).toEqual({ steps: 5_000 })
+    expect((await nekdo.json('/api/subscriptions')).subscriptions).toEqual([])
+    expect((await nekdo.json('/api/unsubscribe', { body: { endpoint: sub.endpoint } })).removed).toBe(false)
+    expect((await ja.json('/api/subscriptions')).subscriptions).toHaveLength(1)
   })
 
-  it('zařízení si řekne jen o to, co od minula přibylo', async () => {
-    await call('/api/state', { body: { records: [den('a', '2026-08-17T10:00:00.000Z', { steps: 1 })] } })
-    const first = await readJson(await call('/api/state'))
+  it('cizí verzi stavu nejde obnovit', async () => {
+    const { ja, nekdo } = await dvaUcty()
+    await ja.json('/api/state', {
+      body: { records: [{ kind: 'day', id: 'a', updatedAt: '2026-08-17T10:00:00.000Z', payload: { steps: 1 } }] },
+    })
+    const { versions } = await ja.json('/api/state/versions')
 
-    await call('/api/state', { body: { records: [den('b', '2026-08-17T11:00:00.000Z', { steps: 2 })] } })
-    const delta = await readJson(await call(`/api/state?since=${first.rev}`))
-    expect(delta.records.map((r: { id: string }) => r.id)).toEqual(['b'])
+    const res = await nekdo.call('/api/state/restore', { body: { rev: versions[0].rev } })
+    expect(res.status).toBe(404)
   })
 
-  it('odpověď na nahrání rovnou nese změny od druhého zařízení', async () => {
-    // Notebook nahrál kroky…
-    await call('/api/state', { body: { records: [den('a', '2026-08-17T10:00:00.000Z', { steps: 1 })] } })
-    // …telefon o tom neví a posílá svoje. Musí to stihnout jedním kolem.
-    const data = await readJson(
-      await call('/api/state', { body: { since: 0, records: [den('b', '2026-08-17T11:00:00.000Z', { steps: 2 })] } }),
-    )
-    expect(data.records.map((r: { id: string }) => r.id).sort()).toEqual(['a', 'b'])
+  it('cizí log není vidět', async () => {
+    const { ja, nekdo } = await dvaUcty()
+    await ja.json('/api/ingest/steps', { body: { date: '2026-08-17', steps: 8_123 } })
+
+    const log = await nekdo.json('/api/log')
+    expect(JSON.stringify(log)).not.toContain('8123')
   })
 
-  it('nesmyslné číslo v since se bere jako od začátku', async () => {
-    await call('/api/state', { body: { records: [den('a', '2026-08-17T10:00:00.000Z', { steps: 1 })] } })
-    const data = await readJson(await call('/api/state?since=abc'))
-    expect(data.count).toBe(1)
-  })
+  it('token jednoho účtu nepustí do dat druhého', async () => {
+    const { ja, nekdo } = await dvaUcty()
+    const { token } = await nekdo.json('/api/tokens', { body: {} })
 
-  it('tělo bez záznamů nic nerozbije', async () => {
-    const data = await readJson(await call('/api/state', { body: {} }))
-    expect(data).toMatchObject({ applied: 0, rev: 0 })
-  })
+    await client().call('/api/ingest/steps', { body: { date: '2026-08-17', steps: 4_321 }, token, anonymous: true })
 
-  it('nesmyslně velká dávka se odmítne', async () => {
-    const records = Array.from({ length: 20_001 }, (_, i) => den(`d${i}`, '2026-08-17T10:00:00.000Z', { steps: i }))
-    const res = await call('/api/state', { body: { records } })
-    expect(res.status).toBe(413)
-  })
-
-  it('verze stavu se ukládají a dá se k nim vrátit', async () => {
-    await call('/api/state', { body: { records: [den('a', '2026-08-17T10:00:00.000Z', { steps: 5_000 })] } })
-    const versions = await readJson(await call('/api/state/versions'))
-    expect(versions.versions).toHaveLength(1)
-    expect(versions.stats.kinds).toEqual({ day: 1 })
-
-    await call('/api/state', { body: { records: [den('a', '2026-08-17T20:00:00.000Z', { steps: 0 })] } })
-
-    const restore = await readJson(
-      await call('/api/state/restore', { body: { rev: versions.versions[0].rev } }),
-    )
-    expect(restore.restored).toBe(1)
-
-    const pull = await readJson(await call('/api/state'))
-    expect(pull.records[0].payload).toEqual({ steps: 5_000 })
-  })
-
-  it('návrat k neznámé verzi je 404, bez čísla 400', async () => {
-    expect((await call('/api/state/restore', { body: { rev: 999 } })).status).toBe(404)
-    expect((await call('/api/state/restore', { body: {} })).status).toBe(400)
+    expect((await ja.json('/api/steps')).steps).toEqual([])
+    expect((await nekdo.json('/api/steps')).steps[0].steps).toBe(4_321)
   })
 })

@@ -1,6 +1,13 @@
 import webpush, { type PushSubscription, type WebPushError } from 'web-push'
 import { config } from './config.js'
-import { addLog, getDb, markDirty, removeSubscription, type StoredSubscription } from './store.js'
+import {
+  addLog,
+  dropSubscription,
+  listSubscriptions,
+  markSubscriptionFailure,
+  markSubscriptionSuccess,
+  type StoredSubscription,
+} from './store.js'
 
 webpush.setVapidDetails(config.vapid.subject, config.vapid.publicKey, config.vapid.privateKey)
 
@@ -31,14 +38,13 @@ export interface SendResult {
 }
 
 /**
- * Rozešle notifikaci na všechna registrovaná zařízení.
+ * Rozešle notifikaci na všechna zařízení jednoho uživatele.
  *
  * 404/410 = odběr už neexistuje (uživatel odinstaloval PWA nebo push službě
  * vypršel) → smazat, jinak by se to zkoušelo donekonečna.
  */
-export async function sendToAll(payload: PushPayload): Promise<SendResult> {
-  const db = getDb()
-  const subs = [...db.subscriptions]
+export async function sendToUser(userId: string, payload: PushPayload): Promise<SendResult> {
+  const subs = listSubscriptions(userId)
   if (subs.length === 0) return { sent: 0, removed: 0, failed: 0 }
 
   const body = JSON.stringify(payload)
@@ -53,27 +59,24 @@ export async function sendToAll(payload: PushPayload): Promise<SendResult> {
           TTL: 60 * 60, // hodinu; starší připomínka už nemá smysl
           urgency: 'normal',
         })
-        sub.lastSuccessAt = new Date().toISOString()
-        sub.failures = 0
-        markDirty()
+        markSubscriptionSuccess(sub.endpoint)
         sent++
       } catch (err) {
         const status = (err as WebPushError).statusCode
         if (status === 404 || status === 410) {
-          removeSubscription(sub.endpoint)
+          dropSubscription(sub.endpoint)
           removed++
-          addLog('push', `odběr smazán (${status}): ${sub.label}`)
+          addLog(userId, 'push', `odběr smazán (${status}): ${sub.label}`)
           return
         }
-        sub.failures = (sub.failures ?? 0) + 1
-        markDirty()
+        const failures = markSubscriptionFailure(sub.endpoint)
         failed++
-        addLog('push', `chyba ${status ?? '?'} u ${sub.label}: ${(err as Error).message}`)
+        addLog(userId, 'push', `chyba ${status ?? '?'} u ${sub.label}: ${(err as Error).message}`)
         // Po deseti neúspěších to vzdáme – zařízení už zjevně neexistuje.
-        if (sub.failures >= 10) {
-          removeSubscription(sub.endpoint)
+        if (failures >= 10) {
+          dropSubscription(sub.endpoint)
           removed++
-          addLog('push', `odběr smazán po 10 selháních: ${sub.label}`)
+          addLog(userId, 'push', `odběr smazán po 10 selháních: ${sub.label}`)
         }
       }
     }),

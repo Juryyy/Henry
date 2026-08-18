@@ -10,7 +10,10 @@ poskládat ručně – zabere to tak deset minut.
 
 ## Než začneš
 
-Potřebuješ běžící server a jeho token (výstup `npm run keys` ve složce `server`).
+Potřebuješ běžící server a token pro Zkratku. Vygeneruješ si ho v appce:
+**Nastavení → Účet → Token pro Zkratku**. Ukáže se jednou – zkopíruj si ho
+hned. Zkratka neumí přihlášení cookie, proto má vlastní klíč, který jde
+kdykoli zrušit, aniž bys měnil heslo.
 V dalším textu je adresa serveru psaná jako `https://henry.tvujserver.cz` –
 dosaď svoji.
 
@@ -164,7 +167,7 @@ i desítky megabajtů.
 
 | Příznak | Nejčastější příčina |
 |---|---|
-| `401` | Token nesedí, nebo v hlavičce chybí slovo `Bearer` a mezera za ním |
+| `401` | Token nesedí (nebo byl zrušený), nebo v hlavičce chybí slovo `Bearer` a mezera za ním |
 | Kroky jsou 0 | Telefon byl v době běhu zamčený (viz výše) |
 | Nesrozumitelná síťová chyba | Prázdný řádek v hlavičkách, přebývající dvojtečka v hodnotě, nebo self-signed certifikát |
 | Automatizace nespustí | Zkus telefon restartovat; v iOS 26 je to známá vada |

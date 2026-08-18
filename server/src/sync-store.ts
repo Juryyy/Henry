@@ -1,25 +1,17 @@
 /**
- * Úložiště synchronizovaných dat.
- *
- * Proč vedle `db.json` ještě SQLite: `db.json` drží provozní stav serveru
- * (odběry notifikací, rozvrh, co už dnes odešlo) – ten patří serveru a nikam
- * se nereplikuje. Tady leží *tvoje* data, která se slévají z víc zařízení.
- * To jsou dvě různé věci s různým životním cyklem, takže dva soubory.
+ * Úložiště synchronizovaných dat uživatele.
  *
  * Model je záměrně hloupý: jeden řádek = jeden záznam (den, měření, úkol…)
- * identifikovaný dvojicí `kind` + `id`. Server nerozumí tomu, co v záznamu je;
- * jen ví, kdy naposledy vznikl, a při souběhu nechá vyhrát novější zápis
- * (last-write-wins po záznamech, ne přes celý stav – jinak by odpolední zápis
- * z tabletu přepsal dopolední odškrtnutí z telefonu).
+ * identifikovaný trojicí `user_id` + `kind` + `id`. Server nerozumí tomu, co
+ * v záznamu je; jen ví, kdy naposledy vznikl, a při souběhu nechá vyhrát
+ * novější zápis (last-write-wins po záznamech, ne přes celý stav – jinak by
+ * odpolední zápis z notebooku přepsal dopolední odškrtnutí z telefonu).
  *
- * `rev` je čítač serveru. Zařízení si pamatuje, kde skončilo, a příště si
- * řekne jen o to, co přibylo.
+ * `rev` je čítač na uživatele. Zařízení si pamatuje, kde skončilo, a příště
+ * si řekne jen o to, co od té doby přibylo.
  */
 
-import { DatabaseSync } from 'node:sqlite'
-import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
-import { config } from './config.js'
+import { getDb, transact } from './db.js'
 
 export interface SyncRecord {
   kind: string
@@ -34,7 +26,7 @@ export interface SyncRecord {
 }
 
 /** Kolik verzí stavu se drží pro případ, že si uživatel něco rozbije. */
-const MAX_SNAPSHOTS = 30
+const MAX_VERSIONS = 30
 
 /**
  * Zápis z budoucnosti znamená rozjeté hodiny na zařízení. Kdyby se uložil,
@@ -42,54 +34,14 @@ const MAX_SNAPSHOTS = 30
  */
 const MAX_SKEW_MS = 5 * 60 * 1000
 
-let db: DatabaseSync | null = null
-
-export function openSyncDb(file = config.syncFile): DatabaseSync {
-  if (db) return db
-  if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true })
-  db = new DatabaseSync(file)
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    CREATE TABLE IF NOT EXISTS records (
-      kind       TEXT    NOT NULL,
-      id         TEXT    NOT NULL,
-      rev        INTEGER NOT NULL,
-      updated_at TEXT    NOT NULL,
-      deleted    INTEGER NOT NULL DEFAULT 0,
-      payload    TEXT,
-      PRIMARY KEY (kind, id)
-    );
-    CREATE INDEX IF NOT EXISTS records_rev ON records (rev);
-    CREATE TABLE IF NOT EXISTS meta (
-      key   TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS snapshots (
-      rev     INTEGER PRIMARY KEY,
-      at      TEXT    NOT NULL,
-      records INTEGER NOT NULL,
-      payload TEXT    NOT NULL
-    );
-  `)
-  return db
-}
-
-/** Jen pro testy – zahodí otevřené spojení, ať jde začít na čisto. */
-export function closeSyncDb(): void {
-  db?.close()
-  db = null
-}
-
-function conn(): DatabaseSync {
-  return db ?? openSyncDb()
-}
-
 /* ------------------------------------------------------------------ */
 /*  Revize                                                             */
 /* ------------------------------------------------------------------ */
 
-export function currentRev(): number {
-  const row = conn().prepare('SELECT MAX(rev) AS rev FROM records').get() as { rev: number | null }
+export function currentRev(userId: string): number {
+  const row = getDb().prepare('SELECT MAX(rev) AS rev FROM records WHERE user_id = ?').get(userId) as {
+    rev: number | null
+  }
   return row?.rev ?? 0
 }
 
@@ -121,11 +73,11 @@ function toRecord(row: Row): SyncRecord {
  * Záznamy, které přibyly od revize `since`. `since = 0` vrátí všechno –
  * tak si nové zařízení stáhne celou historii.
  */
-export function pullRecords(since = 0, limit = 5_000): { rev: number; records: SyncRecord[] } {
-  const rows = conn()
-    .prepare('SELECT * FROM records WHERE rev > ? ORDER BY rev LIMIT ?')
-    .all(since, limit) as unknown as Row[]
-  return { rev: currentRev(), records: rows.map(toRecord) }
+export function pullRecords(userId: string, since = 0, limit = 5_000): { rev: number; records: SyncRecord[] } {
+  const rows = getDb()
+    .prepare('SELECT kind, id, rev, updated_at, deleted, payload FROM records WHERE user_id = ? AND rev > ? ORDER BY rev LIMIT ?')
+    .all(userId, since, limit) as unknown as Row[]
+  return { rev: currentRev(userId), records: rows.map(toRecord) }
 }
 
 /* ------------------------------------------------------------------ */
@@ -146,7 +98,7 @@ function isValid(record: unknown): record is SyncRecord {
   return typeof r.kind === 'string' && !!r.kind && typeof r.id === 'string' && !!r.id && typeof r.updatedAt === 'string'
 }
 
-/** Rozjeté hodiny na zařízení nesmí zablokovat všechny další zápisy. */
+/** Rozjeté hodiny na zařízení nesmí zablokovat další zápisy. */
 function clampTime(iso: string, now = Date.now()): string {
   const time = Date.parse(iso)
   if (!Number.isFinite(time)) return new Date(now).toISOString()
@@ -161,33 +113,32 @@ export interface PushOptions {
   force?: boolean
 }
 
-export function pushRecords(incoming: unknown[], options: PushOptions = {}): PushResult {
-  const database = conn()
+export function pushRecords(userId: string, incoming: unknown[], options: PushOptions = {}): PushResult {
+  const database = getDb()
   const now = Date.now()
-  let rev = currentRev()
+  let rev = currentRev(userId)
   let applied = 0
   let skipped = 0
 
-  const existing = database.prepare('SELECT updated_at FROM records WHERE kind = ? AND id = ?')
+  const existing = database.prepare('SELECT updated_at FROM records WHERE user_id = ? AND kind = ? AND id = ?')
   const upsert = database.prepare(`
-    INSERT INTO records (kind, id, rev, updated_at, deleted, payload)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT (kind, id) DO UPDATE SET
+    INSERT INTO records (user_id, kind, id, rev, updated_at, deleted, payload)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (user_id, kind, id) DO UPDATE SET
       rev = excluded.rev,
       updated_at = excluded.updated_at,
       deleted = excluded.deleted,
       payload = excluded.payload
   `)
 
-  database.exec('BEGIN')
-  try {
+  transact(() => {
     for (const item of incoming) {
       if (!isValid(item)) {
         skipped++
         continue
       }
       const updatedAt = clampTime(item.updatedAt, now)
-      const current = existing.get(item.kind, item.id) as { updated_at: string } | undefined
+      const current = existing.get(userId, item.kind, item.id) as { updated_at: string } | undefined
 
       // Shoda na čase znamená „už to tam je“ – přepisovat nemá co přinést.
       if (!options.force && current && current.updated_at >= updatedAt) {
@@ -197,6 +148,7 @@ export function pushRecords(incoming: unknown[], options: PushOptions = {}): Pus
 
       rev++
       upsert.run(
+        userId,
         item.kind,
         item.id,
         rev,
@@ -206,20 +158,16 @@ export function pushRecords(incoming: unknown[], options: PushOptions = {}): Pus
       )
       applied++
     }
-    database.exec('COMMIT')
-  } catch (err) {
-    database.exec('ROLLBACK')
-    throw err
-  }
+  })
 
-  return { rev: currentRev(), applied, skipped }
+  return { rev: currentRev(userId), applied, skipped }
 }
 
 /* ------------------------------------------------------------------ */
 /*  Verze stavu                                                        */
 /* ------------------------------------------------------------------ */
 
-export interface SnapshotInfo {
+export interface VersionInfo {
   rev: number
   at: string
   records: number
@@ -230,40 +178,43 @@ export interface SnapshotInfo {
  * jde vrátit i to, co si uživatel sám rozbije – omylem naimportovaná stará
  * záloha, vyhlášený bankrot, smazané měření.
  */
-export function saveSnapshot(): SnapshotInfo | null {
-  const database = conn()
-  const rev = currentRev()
+export function saveVersion(userId: string): VersionInfo | null {
+  const database = getDb()
+  const rev = currentRev(userId)
   if (rev === 0) return null
 
-  const existing = database.prepare('SELECT rev FROM snapshots WHERE rev = ?').get(rev)
+  const existing = database.prepare('SELECT rev FROM versions WHERE user_id = ? AND rev = ?').get(userId, rev)
   if (existing) return null
 
-  const { records } = pullRecords(0)
-  const info: SnapshotInfo = { rev, at: new Date().toISOString(), records: records.length }
+  const { records } = pullRecords(userId, 0)
+  const info: VersionInfo = { rev, at: new Date().toISOString(), records: records.length }
   database
-    .prepare('INSERT INTO snapshots (rev, at, records, payload) VALUES (?, ?, ?, ?)')
-    .run(info.rev, info.at, info.records, JSON.stringify(records))
+    .prepare('INSERT INTO versions (user_id, rev, at, records, payload) VALUES (?, ?, ?, ?, ?)')
+    .run(userId, info.rev, info.at, info.records, JSON.stringify(records))
 
-  // Držíme jen posledních pár verzí, ať soubor neroste donekonečna.
+  // Držíme jen posledních pár verzí, ať databáze neroste donekonečna.
   database
-    .prepare('DELETE FROM snapshots WHERE rev NOT IN (SELECT rev FROM snapshots ORDER BY rev DESC LIMIT ?)')
-    .run(MAX_SNAPSHOTS)
+    .prepare(
+      `DELETE FROM versions WHERE user_id = ? AND rev NOT IN (
+         SELECT rev FROM versions WHERE user_id = ? ORDER BY rev DESC LIMIT ?
+       )`,
+    )
+    .run(userId, userId, MAX_VERSIONS)
   return info
 }
 
-export function listSnapshots(): SnapshotInfo[] {
-  const rows = conn()
-    .prepare('SELECT rev, at, records FROM snapshots ORDER BY rev DESC')
-    .all() as unknown as SnapshotInfo[]
-  return rows
+export function listVersions(userId: string): VersionInfo[] {
+  return getDb()
+    .prepare('SELECT rev, at, records FROM versions WHERE user_id = ? ORDER BY rev DESC')
+    .all(userId) as unknown as VersionInfo[]
 }
 
 /**
  * Vrátí stav do podoby z dané verze. Záznamy se nemažou natvrdo – zapíšou se
  * s aktuálním časem, takže se změna normálně rozsype na všechna zařízení.
  */
-export function restoreSnapshot(rev: number): { restored: number } | null {
-  const row = conn().prepare('SELECT payload FROM snapshots WHERE rev = ?').get(rev) as
+export function restoreVersion(userId: string, rev: number): { restored: number } | null {
+  const row = getDb().prepare('SELECT payload FROM versions WHERE user_id = ? AND rev = ?').get(userId, rev) as
     | { payload: string }
     | undefined
   if (!row) return null
@@ -274,12 +225,12 @@ export function restoreSnapshot(rev: number): { restored: number } | null {
 
   // Co ve verzi nebylo, ale dnes existuje, se musí zneplatnit náhrobkem –
   // jinak by obnova nechala nová data ležet vedle starých.
-  const inSnapshot = new Set(records.map((r) => `${r.kind} ${r.id}`))
-  const tombstones = pullRecords(0)
-    .records.filter((r) => !inSnapshot.has(`${r.kind} ${r.id}`) && !r.deleted)
+  const inVersion = new Set(records.map((r) => `${r.kind} ${r.id}`))
+  const tombstones = pullRecords(userId, 0)
+    .records.filter((r) => !inVersion.has(`${r.kind} ${r.id}`) && !r.deleted)
     .map((r) => ({ kind: r.kind, id: r.id, updatedAt: now, deleted: true }))
 
-  const result = pushRecords([...revived, ...tombstones], { force: true })
+  const result = pushRecords(userId, [...revived, ...tombstones], { force: true })
   return { restored: result.applied }
 }
 
@@ -287,15 +238,22 @@ export function restoreSnapshot(rev: number): { restored: number } | null {
 /*  Statistika pro diagnostiku                                         */
 /* ------------------------------------------------------------------ */
 
-export function syncStats(): { rev: number; records: number; deleted: number; kinds: Record<string, number> } {
-  const database = conn()
-  const total = database.prepare('SELECT COUNT(*) AS n FROM records').get() as { n: number }
-  const gone = database.prepare('SELECT COUNT(*) AS n FROM records WHERE deleted = 1').get() as { n: number }
+export function syncStats(userId: string): {
+  rev: number
+  records: number
+  deleted: number
+  kinds: Record<string, number>
+} {
+  const database = getDb()
+  const total = database.prepare('SELECT COUNT(*) AS n FROM records WHERE user_id = ?').get(userId) as { n: number }
+  const gone = database.prepare('SELECT COUNT(*) AS n FROM records WHERE user_id = ? AND deleted = 1').get(userId) as {
+    n: number
+  }
   const byKind = database
-    .prepare('SELECT kind, COUNT(*) AS n FROM records WHERE deleted = 0 GROUP BY kind')
-    .all() as unknown as { kind: string; n: number }[]
+    .prepare('SELECT kind, COUNT(*) AS n FROM records WHERE user_id = ? AND deleted = 0 GROUP BY kind')
+    .all(userId) as unknown as { kind: string; n: number }[]
   return {
-    rev: currentRev(),
+    rev: currentRev(userId),
     records: total.n,
     deleted: gone.n,
     kinds: Object.fromEntries(byKind.map((r) => [r.kind, r.n])),

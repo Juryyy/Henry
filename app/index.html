@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Bez user-scalable=no: v nainstalované PWA ho iOS respektuje a zablokoval
+         by přiblížení prstem, což je zbytečná překážka pro každého, kdo hůř vidí. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Henry</title>
+    <meta name="description" content="Kroky, core, protahování a týdenní úkoly. S dluhem, který se nedá utéct." />
+
+    <meta name="theme-color" content="#0c0e13" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f2f4f8" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="dark light" />
+
+    <!-- iOS: bez tohohle se PWA po přidání na plochu chová jako obyčejná záložka -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Henry" />
+    <!-- Relativní cesty schválně: appka může běžet i v podadresáři
+         (GitHub Pages /henry/) a absolutní /icons/… by tam skončily na 404. -->
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="mask-icon" href="./favicon.svg" color="#4ade80" />
+
+    <!-- Barva pozadí ještě než se načte CSS, aby to neproblikávalo.
+         Musí respektovat režim zařízení – natvrdo tmavá by ve světlém
+         režimu prosvítala pod obsahem stránky. -->
+    <style>
+      html { background: #0c0e13; }
+      @media (prefers-color-scheme: light) {
+        html { background: #f2f4f8; }
+      }
+      #app-loading {
+        position: fixed; inset: 0; display: grid; place-items: center;
+        font: 500 15px/1.4 system-ui, sans-serif; color: #6b7280;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"><div id="app-loading">Načítám…</div></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

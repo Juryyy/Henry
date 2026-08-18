@@ -35,7 +35,11 @@ COPY --from=app /build/dist ./public
 ENV APP_DIR=/app/public
 ENV DB_FILE=/app/data/henry.sqlite
 
-# Databáze žije ve svazku, ať přežije přebuildování obrazu.
+# Složku pro databázi musí vyrobit a předat uživateli `node` obraz, ne až
+# běh: Docker z ní při prvním startu udělá svazek i s vlastnictvím, a kdyby
+# patřila rootovi, proces pod `node` by do ní nesměl zapsat a server by
+# spadl hned na otevření databáze.
+RUN mkdir -p /app/data && chown -R node:node /app/data
 VOLUME ["/app/data"]
 
 # Neběžet pod rootem.

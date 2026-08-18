@@ -19,6 +19,7 @@ import {
 import { checkMilestones, type Milestone } from '@/lib/milestones'
 import { touch, touchEverything, touchSettings, tombstone } from '@/lib/sync-records'
 import { exportState, flushState, importState, loadState, saveState } from '@/lib/storage'
+import { defaultWeeklyTasks, moveTask as moveTasks } from '@/lib/tasks'
 import type {
   AppState,
   BlockLog,
@@ -267,6 +268,36 @@ export function upsertTask(task: WeeklyTask): void {
 export function removeTask(taskId: string): void {
   state.weeklyTasks = state.weeklyTasks.filter((t) => t.id !== taskId)
   tombstone(state, 'task', taskId)
+}
+
+/**
+ * Posun úkolu v seznamu. Přečísluje se celé pořadí, takže se orazítkuje
+ * každý úkol, kterému se číslo změnilo – jinak by si druhé zařízení
+ * stáhlo jen půlku a seznam by se rozjel.
+ */
+export function reorderTask(taskId: string, direction: -1 | 1): void {
+  const before = new Map(state.weeklyTasks.map((t) => [t.id, t.order]))
+  const moved = moveTasks(state.weeklyTasks, taskId, direction)
+  if (moved === state.weeklyTasks) return
+
+  state.weeklyTasks = moved
+  for (const task of moved) {
+    if (before.get(task.id) !== task.order) touch(state, 'task', task.id)
+  }
+}
+
+/**
+ * Zpátky na výchozí sadu. Úkoly, které tam nepatří, dostanou náhrobek –
+ * bez něj by se při první synchronizaci vrátily z jiného zařízení.
+ */
+export function resetTasks(): void {
+  const fresh = defaultWeeklyTasks()
+  const keep = new Set(fresh.map((t) => t.id))
+  for (const task of state.weeklyTasks) {
+    if (!keep.has(task.id)) tombstone(state, 'task', task.id)
+  }
+  state.weeklyTasks = fresh
+  for (const task of fresh) touch(state, 'task', task.id)
 }
 
 /* ------------------------------------------------------------------ */

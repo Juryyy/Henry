@@ -1,5 +1,6 @@
 import { touchEverything } from './sync-records'
-import type { AppState, Settings, WeeklyTask } from './types'
+import { defaultWeeklyTasks, TASK_ORDER_STEP } from './tasks'
+import type { AppState, Settings } from './types'
 import { todayKey } from './date'
 
 const STORAGE_KEY = 'henry.state.v1'
@@ -15,6 +16,8 @@ export const SCHEMA_VERSION = 2
  * Součet musí být 100.
  */
 export const DEFAULT_DISTRIBUTION = [13, 13, 13, 13, 14, 17, 17]
+
+export { defaultWeeklyTasks } from './tasks'
 
 export function defaultSettings(): Settings {
   return {
@@ -56,17 +59,6 @@ export function defaultSettings(): Settings {
       tone: 'coach',
     },
   }
-}
-
-export function defaultWeeklyTasks(): WeeklyTask[] {
-  return [
-    { id: 'gym', title: 'Posilovna', target: 1, emoji: '🏋️', active: true, rollover: true,
-      note: 'Full-body okruh – dřep, tlak, tah, mrtvý tah s lehkou vahou.' },
-    { id: 'long-walk', title: 'Dlouhá procházka (60+ min)', target: 1, emoji: '🥾', active: true, rollover: true },
-    { id: 'weigh-in', title: 'Zvážit se a změřit pas', target: 1, emoji: '⚖️', active: true, rollover: false },
-    { id: 'toe-test', title: 'Test předklonu (cm od země)', target: 1, emoji: '📏', active: true, rollover: false },
-    { id: 'no-alcohol', title: '5 dní bez alkoholu', target: 5, emoji: '🚱', active: false, rollover: false },
-  ]
 }
 
 export function defaultState(): AppState {
@@ -123,6 +115,16 @@ function migrate(raw: Record<string, unknown>): Record<string, unknown> {
   // historii na server a nic se neztratí.
   if (!state.meta) {
     state.meta = { updatedAt: {}, deleted: {}, stampAll: true }
+  }
+
+  // Pořadí úkolů přibylo později. Bez něj by se seznam po synchronizaci
+  // zamíchal, protože záznamy chodí ze serveru v libovolném pořadí –
+  // dosavadní pozice v poli se proto jednorázově zapíše jako číslo.
+  const tasks = state.weeklyTasks as Record<string, unknown>[] | undefined
+  if (Array.isArray(tasks)) {
+    tasks.forEach((task, index) => {
+      if (typeof task.order !== 'number') task.order = index * TASK_ORDER_STEP
+    })
   }
 
   state.schemaVersion = SCHEMA_VERSION

@@ -107,6 +107,12 @@ export interface WeeklyTask {
   /** Nesplněné se přenáší do dalšího týdne. */
   rollover: boolean
   note?: string
+  /**
+   * Pořadí v seznamu. Vlastní číslo, ne pozice v poli: synchronizace vydává
+   * záznamy po jednom a v libovolném pořadí, takže bez tohohle by se seznam
+   * na druhém zařízení zamíchal.
+   */
+  order: number
 }
 
 export interface WeeklyTaskLog {

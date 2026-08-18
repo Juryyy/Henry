@@ -30,6 +30,7 @@ import {
   type DateKey,
   type WeekKey,
 } from './date'
+import { sortTasks } from './tasks'
 import type {
   AppState,
   DayLog,
@@ -419,7 +420,9 @@ export function carriedTaskCount(state: AppState, week: WeekKey, task: WeeklyTas
 }
 
 export function summarizeTasks(state: AppState, week: WeekKey): TaskSummary[] {
-  return state.weeklyTasks
+  // Řadí se podle vlastního pořadí, ne podle pole – to je po synchronizaci
+  // v pořadí, v jakém záznamy dorazily ze serveru.
+  return sortTasks(state.weeklyTasks)
     .filter((t) => t.active)
     .map((task) => {
       const log = getTaskLog(state, week, task.id)

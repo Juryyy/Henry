@@ -133,13 +133,13 @@ test.describe('nastavení', () => {
     await expect.poll(async () => (await readState(page)).settings.steps.distribution[0]).toBe(0)
   })
 
-  test('nový týdenní úkol se přidá a objeví na dnešku', async ({ page, context }) => {
+  test('úkol z nabídky se přidá a objeví na dnešku', async ({ page, context }) => {
     await seed(context)
     await page.goto('/#/nastaveni')
     await ready(page)
 
-    await page.getByPlaceholder('Nový úkol…').fill('Bazén')
-    await page.getByRole('button', { name: 'Přidat', exact: true }).click()
+    await page.getByRole('button', { name: 'Přidat úkol' }).click()
+    await page.getByRole('button', { name: '🏊 Bazén' }).click()
     await expect.poll(async () =>
       (await readState(page)).weeklyTasks.some((t: any) => t.title === 'Bazén'),
     ).toBe(true)
@@ -147,6 +147,54 @@ test.describe('nastavení', () => {
     await page.goto('/#/')
     await ready(page)
     await expect(page.getByText('Bazén')).toBeVisible()
+  })
+
+  test('úkol se dá přejmenovat, přenastavit i posunout', async ({ page, context }) => {
+    await seed(context)
+    await page.goto('/#/nastaveni')
+    await ready(page)
+
+    await page.getByRole('button', { name: 'Upravit Posilovna' }).click()
+    await page.getByLabel('Název').fill('Kruháč')
+    await page.getByLabel('Název').blur()
+    await page.getByRole('button', { name: '3× týdně' }).click()
+    await page.getByRole('button', { name: 'Ikona 🤸' }).click()
+
+    await expect.poll(async () => {
+      const task = (await readState(page)).weeklyTasks.find((t: any) => t.id === 'gym')
+      return [task?.title, task?.target, task?.emoji]
+    }).toEqual(['Kruháč', 3, '🤸'])
+
+    // Posun dolů musí přečíslovat pořadí, ne jen prohodit dvě položky.
+    await page.getByRole('button', { name: 'Posunout dolů' }).click()
+    await expect.poll(async () => {
+      const tasks = (await readState(page)).weeklyTasks
+      return [...tasks].sort((a: any, b: any) => a.order - b.order).map((t: any) => t.id)[0]
+    }).toBe('long-walk')
+
+    await page.goto('/#/')
+    await ready(page)
+    await expect(page.getByText('Kruháč')).toBeVisible()
+  })
+
+  test('vlastní úkol jde napsat a smazat', async ({ page, context }) => {
+    await seed(context)
+    await page.goto('/#/nastaveni')
+    await ready(page)
+
+    await page.getByRole('button', { name: 'Přidat úkol' }).click()
+    await page.getByRole('button', { name: 'Nebo si napiš vlastní' }).click()
+    await page.getByLabel('Název').fill('Lezecká stěna')
+    await page.getByLabel('Název').blur()
+
+    await expect.poll(async () =>
+      (await readState(page)).weeklyTasks.some((t: any) => t.title === 'Lezecká stěna'),
+    ).toBe(true)
+
+    await page.getByRole('button', { name: 'Smazat úkol' }).click()
+    await expect.poll(async () =>
+      (await readState(page)).weeklyTasks.some((t: any) => t.title === 'Lezecká stěna'),
+    ).toBe(false)
   })
 
   test('export a import zálohy zachovají data', async ({ page, context }) => {

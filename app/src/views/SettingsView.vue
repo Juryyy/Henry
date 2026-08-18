@@ -37,15 +37,8 @@ import {
   pushBlockedReason,
   showLocalNotification,
 } from '@/lib/sw-client'
-import {
-  exportJson,
-  importJson,
-  removeTask,
-  resetAll,
-  state,
-  upsertTask,
-} from '@/stores/app'
-import type { WeeklyTask } from '@/lib/types'
+import { exportJson, importJson, resetAll, state } from '@/stores/app'
+import WeeklyTasks from '@/components/WeeklyTasks.vue'
 
 const s = computed(() => state.settings)
 
@@ -93,27 +86,6 @@ function clampShare(index: number): void {
   s.value.steps.distribution[index] = Math.min(40, Math.max(0, Math.round(value)))
 }
 
-/* Úkoly ---------------------------------------------------------------- */
-
-const newTask = ref('')
-
-function addTask(): void {
-  const title = newTask.value.trim()
-  if (!title) return
-  upsertTask({
-    id: `task-${Date.now().toString(36)}`,
-    title,
-    target: 1,
-    emoji: '✅',
-    active: true,
-    rollover: true,
-  })
-  newTask.value = ''
-}
-
-function patchTask(task: WeeklyTask, patch: Partial<WeeklyTask>): void {
-  upsertTask({ ...task, ...patch })
-}
 
 /* Notifikace ------------------------------------------------------------ */
 
@@ -574,35 +546,7 @@ const confirmReset = ref(false)
       </section>
 
       <!-- Týdenní úkoly ----------------------------------------------- -->
-      <section class="card">
-        <div class="card-title">Týdenní úkoly</div>
-        <ul class="list-reset stack-sm">
-          <li v-for="task in state.weeklyTasks" :key="task.id" class="task-edit">
-            <label class="toggle grow">
-              <input type="checkbox" :checked="task.active" @change="patchTask(task, { active: !task.active })" />
-              <span>
-                {{ task.emoji }} {{ task.title }}
-                <span class="tiny faint block">
-                  {{ task.target }}× týdně{{ task.rollover ? ' · přenáší se' : '' }}
-                </span>
-              </span>
-            </label>
-            <input
-              class="count"
-              type="number"
-              min="1"
-              max="7"
-              :value="task.target"
-              @change="patchTask(task, { target: Math.max(1, Number(($event.target as HTMLInputElement).value)) })"
-            />
-            <button class="btn btn-sm btn-ghost" aria-label="Smazat úkol" @click="removeTask(task.id)">✕</button>
-          </li>
-        </ul>
-        <div class="row" style="gap: 8px; margin-top: 12px">
-          <input v-model="newTask" type="text" placeholder="Nový úkol…" @keyup.enter="addTask" />
-          <button class="btn btn-sm btn-primary" :disabled="!newTask.trim()" @click="addTask">Přidat</button>
-        </div>
-      </section>
+      <WeeklyTasks />
 
       <!-- Notifikace -------------------------------------------------- -->
       <section class="card">
@@ -954,16 +898,6 @@ const confirmReset = ref(false)
   text-align: center;
   /* Pod 16 px iOS při fokusu zazoomuje celou stránku. */
   font-size: 16px;
-}
-
-.task-edit { display: flex; align-items: center; gap: 8px; }
-
-.count {
-  width: 52px;
-  min-height: 36px;
-  padding: 4px;
-  text-align: center;
-  flex-shrink: 0;
 }
 
 .notice {

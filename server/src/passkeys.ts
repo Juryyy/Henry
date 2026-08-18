@@ -286,9 +286,15 @@ export async function finishPasskeyLogin(
   rp: RelyingParty,
 ): Promise<FinishLoginResult> {
   const pending = takeChallenge(challengeId)
-  if (!pending) return { ok: false, error: 'Ověření vypršelo, zkus to znovu.' }
+  // `userId` má jen výzva vydaná k přidání klíče. Ta sem nepatří – ať je
+  // hranice mezi oběma ceremoniemi vidět, ne jen odvoditelná z podpisu.
+  if (!pending || pending.userId !== null) return { ok: false, error: 'Ověření vypršelo, zkus to znovu.' }
 
-  const row = getDb().prepare('SELECT * FROM credentials WHERE id = ?').get(response.id) as
+  // Odpověď je z internetu, takže se nepředpokládá, že má správný tvar.
+  const credentialId = typeof response?.id === 'string' ? response.id : ''
+  if (!credentialId) return { ok: false, error: 'Tenhle klíč tu není zaregistrovaný.' }
+
+  const row = getDb().prepare('SELECT * FROM credentials WHERE id = ?').get(credentialId) as
     | CredentialRow
     | undefined
   if (!row) return { ok: false, error: 'Tenhle klíč tu není zaregistrovaný.' }

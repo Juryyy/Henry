@@ -395,6 +395,16 @@ describe('passkeys přes HTTP', () => {
     expect((await c.call('/api/auth/me')).status).toBe(200)
   })
 
+  it('odpověď, která není odpověď, je 401 a ne pád serveru', async () => {
+    await register('ja@example.com')
+    const c = client()
+    const { challengeId } = await c.json('/api/auth/passkey/login/options', { method: 'POST' })
+
+    const res = await c.call('/api/auth/passkey/login/verify', { body: { challengeId, response: 'nesmysl' } })
+    expect(res.status).toBe(401)
+    expect((await client().json('/api/health')).ok).toBe(true)
+  })
+
   it('/api/auth/me hlásí, kolik klíčů účet má', async () => {
     const { c } = await register('ja@example.com')
     expect((await c.json('/api/auth/me')).passkeys).toBe(0)

@@ -329,6 +329,23 @@ describe('přihlášení klíčem', () => {
     expect(result.ok).toBe(false)
   })
 
+  it('výzva k přidání klíče se nedá použít k přihlášení', async () => {
+    const device = await enroll()
+    // Výzva vydaná k *přidání* klíče: patří jiné ceremonii, i když ji
+    // authenticator umí podepsat.
+    const { options, challengeId } = await startPasskeyRegistration(user, RP)
+
+    const result = await finishPasskeyLogin(challengeId, device.login(options.challenge) as never, RP)
+    expect(result.ok).toBe(false)
+  })
+
+  it('odpověď, která není odpověď, je odmítnutí a ne pád', async () => {
+    await enroll()
+    const { challengeId } = await startPasskeyLogin(RP)
+    const result = await finishPasskeyLogin(challengeId, 'nesmysl' as never, RP)
+    expect(result.ok).toBe(false)
+  })
+
   it('neznámý klíč neprojde', async () => {
     const cizi = authenticator()
     const { options, challengeId } = await startPasskeyLogin(RP)

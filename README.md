@@ -159,7 +159,7 @@ npm run build
 npm run screenshots  # přegeneruje obrázky v docs/screenshots
 
 cd ../server
-npm test          # účty, klíče, HTTP rozhraní, plánovač, slučování dat (150)
+npm test          # účty, klíče, HTTP rozhraní, plánovač, slučování dat (153)
 npm run typecheck
 npm run build
 ```

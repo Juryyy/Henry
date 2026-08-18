@@ -45,9 +45,6 @@ export const config = {
    */
   secureCookies: process.env.SECURE_COOKIES !== 'off',
 
-  /** Povolené originy pro CORS. '*' = cokoli (appka běží na tvé doméně / Pages). */
-  corsOrigins: (process.env.CORS_ORIGINS ?? '*').split(',').map((s) => s.trim()),
-
   /** Vypnutí plánovače (hodí se při ladění). */
   schedulerEnabled: process.env.SCHEDULER !== 'off',
 } as const

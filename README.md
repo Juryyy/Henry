@@ -186,6 +186,12 @@ docker compose up -d
 Pak už jen veřejná HTTPS adresa (Tailscale Funnel zdarma a bez vlastní domény,
 Cloudflare Tunnel, nebo Caddy na VPS) a první účet si založíš rovnou v prohlížeči.
 
+**Chceš to jen vyzkoušet?** Nemusíš nic kupovat: `docker compose up` na
+notebooku a `http://localhost:8080` projde úplně všechno včetně Face ID
+(localhost je pro prohlížeč bezpečná adresa). Na telefon to dostaneš přes
+Tailscale Funnel z toho samého notebooku. Postup i přehled, kde to nechat
+běžet nonstop, je v [docs/nasazeni.md](docs/nasazeni.md).
+
 **Návod krok za krokem je v [docs/nasazeni.md](docs/nasazeni.md)** – Raspberry
 i VPS, včetně tunelů a řešení nejčastějších problémů.
 

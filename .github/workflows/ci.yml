@@ -103,6 +103,32 @@ jobs:
           curl -sf -X POST -H 'Host: henry.example.com' \
             http://127.0.0.1:8099/api/auth/passkey/login/options | grep -q '"rpId":"henry.example.com"'
 
+      # Cesta z návodu: zkopírovat `.env.example`, doplnit klíče, `up -d`.
+      # Jede zvlášť od `docker run` výš, protože compose skládá prostředí
+      # jinak – proměnná z `.env` přebije hodnotu z obrazu, což už jednou
+      # způsobilo, že server servíroval jen API a appka končila 404.
+      - name: Nasazení podle návodu (docker compose)
+        run: |
+          docker rm -f henry-ci || true
+          cp .env.example .env
+          sed -i "s|^VAPID_PUBLIC_KEY=.*|VAPID_PUBLIC_KEY=BPS6uSuDyUO-KuTrjKpCZ7SQAeliy0UcX2E7yO1DS2Z0n3vSjwBiUOgZPpfRHkV9Qrkv9rLSoK-p4NNwU4BLZVg|" .env
+          sed -i "s|^VAPID_PRIVATE_KEY=.*|VAPID_PRIVATE_KEY=fEHGWtbywMmEOoCwvrXXOBcgz12PbgkunlLqumJ_ifY|" .env
+          sed -i "s|^SECURE_COOKIES=.*|SECURE_COOKIES=off|" .env
+          docker compose up -d
+
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8080/api/health > /dev/null && break
+            sleep 1
+          done
+
+          # Appka se musí servírovat, ne jen API.
+          curl -sf http://127.0.0.1:8080/ | grep -q '<title>Henry</title>'
+          # A databáze musí jít otevřít – jinak by první registrace spadla.
+          curl -sf http://127.0.0.1:8080/api/health | grep -q '"registrationOpen":true'
+          curl -sf -X POST -H 'Content-Type: application/json' \
+            -d '{"email":"ci@example.com","password":"dost-dlouhe-heslo"}' \
+            http://127.0.0.1:8080/api/auth/register | grep -q '"first":true'
+
       - name: Logy při chybě
         if: failure()
-        run: docker logs henry-ci
+        run: docker logs henry-ci || docker compose logs

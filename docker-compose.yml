@@ -9,6 +9,11 @@ services:
     environment:
       # Aby logy a časy notifikací seděly s TZ_NAME.
       TZ: ${TZ_NAME:-Europe/Prague}
+      # Cesty uvnitř kontejneru se nastavují tady, ne v `.env`: co přijde
+      # přes env_file, přebíjí hodnoty z obrazu, takže zapomenutý řádek
+      # v `.env` by serveru podstrčil neexistující složku s appkou.
+      APP_DIR: /app/public
+      DB_FILE: /app/data/henry.sqlite
     volumes:
       - henry-data:/app/data
     healthcheck:

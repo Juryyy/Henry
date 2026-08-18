@@ -1,30 +1,29 @@
 /**
- * Vygeneruje VAPID klíčový pár a náhodný token.
- * Spustí se `npm run keys` a výstup se zkopíruje do `.env`.
+ * Vygeneruje klíče pro Web Push. Spustí se `npm run keys` a výstup se vloží
+ * do `.env` v kořeni repozitáře.
+ *
+ * Nic jiného se nastavovat nemusí – přístup řeší účty, ne sdílený token,
+ * a appku i API servíruje ten samý server, takže není kam zadávat adresu.
  */
-import { randomBytes } from 'node:crypto'
 import webpush from 'web-push'
 
 const { publicKey, privateKey } = webpush.generateVAPIDKeys()
-const token = randomBytes(24).toString('base64url')
 
 console.log(`
 # ─────────────────────────────────────────────────────────────
-# Zkopíruj do server/.env  (a NIKDY to necommituj)
+# Vlož do .env v kořeni repozitáře (do gitu to NEPATŘÍ).
+#
+# Vygeneruj je JEDNOU a pak už na ně nesahej: přegenerování
+# zneplatní všechny existující odběry notifikací a každé
+# zařízení se musí zaregistrovat znovu.
 # ─────────────────────────────────────────────────────────────
 VAPID_PUBLIC_KEY=${publicKey}
 VAPID_PRIVATE_KEY=${privateKey}
 VAPID_SUBJECT=mailto:tvuj@email.cz
-HENRY_TOKEN=${token}
-TZ_NAME=Europe/Prague
-PORT=8080
-DATA_FILE=./data/db.json
-CORS_ORIGINS=*
 
 # ─────────────────────────────────────────────────────────────
-# Do appky (Nastavení → Server) zadej:
-#   URL serveru: https://…tvoje-adresa…
-#   Token:       ${token}
+# Pak už jen:  docker compose up -d
+# a otevři adresu serveru v prohlížeči – první účet je tvůj.
 # Veřejný VAPID klíč si appka stáhne sama z /api/config.
 # ─────────────────────────────────────────────────────────────
 `)

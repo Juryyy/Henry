@@ -9,6 +9,104 @@ notifikace potřebují něco, co běží nonstop jinde než v telefonu.
 
 ---
 
+## 0. Kde to nechat běžet
+
+Henry potřebuje dvě věci: **něco, co běží nonstop** (jinak nechodí notifikace)
+a **veřejnou HTTPS adresu** (bez ní neprojde přihlašovací cookie, service
+worker, push ani Face ID). Raspberry je cílový stav, ale dá se začít i jinak.
+
+| Kde | Cena | Běží nonstop | K čemu je to dobré |
+|---|---|---|---|
+| **Notebook + Tailscale Funnel** | zdarma | ne, jen když je zapnutý | **vyzkoušet si to dnes** – viz níž |
+| Raspberry Pi doma | jednorázově za železo | ano | cílový stav, plná kontrola |
+| Oracle Cloud Always Free | zdarma | ano, ale s hvězdičkou | nonstop bez vlastního železa |
+| VPS (Hetzner CAX11 a spol.) | kolem 5 €/měsíc | ano | když nechceš nic řešit |
+
+Co **nefunguje** a nemá cenu to zkoušet:
+
+- **Render, Railway a podobné free tiery** uspávají kontejner po nečinnosti.
+  Henry devadesát devět procent času spí a jednou za minutu se podívá na
+  hodinky – uspaný kontejner se nepodívá nikdy a notifikace prostě nepřijdou.
+- **Koyeb free** neumí připojit disk k bezplatné instanci, takže by se
+  databáze (účty, klíče, data) při každém nasazení smazala.
+- **Fly.io** free tier v roce 2024 zrušil; jede to od zhruba dvou dolarů
+  měsíčně, což je pořád levné, ale zdarma to není.
+- **GitHub Pages a spol.** – tam běží jen statické soubory, ne server.
+
+> **Oracle Always Free s hvězdičkou:** je opravdu zdarma a je to skutečný
+> stroj s diskem, ale Oracle si vyhrazuje právo **zabírat nevyužité instance**
+> a hodnotí to podle zátěže procesoru a sítě. Henry je z principu skoro pořád
+> nečinný, takže je to reálné riziko. Od června 2026 je navíc strop
+> Always Free ARM na 2 OCPU a 12 GB. Na Henryho to bohatě stačí – jen počítej
+> s tím, že instance nemusí být věčná.
+
+---
+
+## 0b. Vyzkoušet to bez Raspberry
+
+Nejrychlejší cesta k tomu vidět appku na vlastním telefonu vede přes notebook.
+Dva kroky, každý na pět minut.
+
+### Krok 1: na notebooku, úplně bez internetu
+
+```bash
+git clone https://github.com/Juryyy/Henry.git
+cd Henry
+docker run --rm -v "$PWD/server":/app -w /app node:22-alpine \
+  sh -c "npm ci --silent && npm run keys"
+
+cp .env.example .env
+nano .env    # vlož VAPID klíče a přepni SECURE_COOKIES=off
+docker compose up -d
+```
+
+Otevři **http://localhost:8080**. Prohlížeč localhost považuje za bezpečnou
+adresu, takže tady funguje skoro všechno včetně **Face ID / Touch ID /
+Windows Hello** a service workeru. Nefunguje jen push na telefon – ten
+potřebuje ikonu na ploše na skutečné adrese.
+
+Tímhle si projdeš úvodního průvodce, zápis kroků, cvičení i přihlášení klíčem,
+aniž bys cokoli vystavoval ven.
+
+### Krok 2: na telefon, pořád z notebooku
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+sudo tailscale funnel --bg 8080
+```
+
+Dostaneš adresu tvaru `https://notebook.tvuj-tailnet.ts.net/` – veřejnou,
+s platným certifikátem, bez otevírání portů na routeru. Na téhle adrese už
+appka umí úplně všechno: přidat na plochu, notifikace i Face ID.
+
+Nezapomeň si v `.env` přepnout `SECURE_COOKIES` zpátky na `on`
+a `docker compose up -d` zopakovat – přes HTTPS už je to na místě.
+
+### Na co si dát pozor
+
+- **Notifikace chodí, jen když notebook běží a nespí.** Plánovač se dívá na
+  hodinky každou minutu; co prospí, to nedožene. Pro pár dní zkoušení to nevadí,
+  pro ostrý provoz je to přesně ten důvod, proč Raspberry nebo VPS.
+- **Klíč pro Face ID je svázaný s adresou.** Klíč nastavený na `localhost`
+  nebude fungovat na `…ts.net` a naopak. Není to porucha, je to ta vlastnost,
+  kvůli které passkeys nejdou zneužít na podvržené stránce. Na každé adrese si
+  ho prostě přidáš znovu (heslem se přihlásíš vždycky).
+- **Přesun na ostrý server = nová databáze.** Data se sice synchronizují, ale
+  jen v rámci jednoho serveru. Až budeš stěhovat, vezmi s sebou soubor:
+
+  ```bash
+  # na notebooku
+  docker compose cp henry:/app/data/henry.sqlite ./henry.sqlite
+  # na cílovém stroji, když tam Henry ještě neběžel
+  docker compose up -d && docker compose cp ./henry.sqlite henry:/app/data/henry.sqlite
+  docker compose restart
+  ```
+
+  Nebo to nech být a založ si účet znovu – je to test, o nic nejde.
+
+---
+
 ## 1. Co budeš potřebovat
 
 - Raspberry Pi (stačí Zero 2 W) nebo malý VPS s 64bitovým systémem,

@@ -8,7 +8,7 @@
  * Když je server zrovna nedostupný, appka jede dál z místní kopie.
  */
 
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { activeBlocks } from './plan'
 import { pullSteps, pushState, syncWithServer } from './api'
 import { buildSnapshot, setSteps, state, today, todayStatus, withRemoteApply } from '@/stores/app'
@@ -20,6 +20,31 @@ import { recalculateFrom } from './engine'
 
 export const syncing = ref(false)
 export const lastSyncError = ref<string | null>(null)
+
+/**
+ * Doběhl už první pokus o stažení dat ze serveru?
+ *
+ * Do té doby se o uživateli nedá nic tvrdit. Na čerstvě otevřeném prohlížeči
+ * je místní kopie prázdná, takže by se dlouholetý uživatel po přihlášení
+ * tvářil jako někdo úplně nový – a appka by ho poslala do úvodního průvodce,
+ * který by mu po dokončení přepsal cíl, úroveň i datum začátku.
+ *
+ * `true` je i po neúspěchu: bez serveru se pracuje s tím, co je v telefonu,
+ * ale rozhodnout se musí.
+ */
+export const stateReady = ref(false)
+
+/**
+ * Odhlášení vrací appku do stavu „ještě nevím“ – další účet má jiná data.
+ *
+ * Hlídá se to tady, ne ve storu s účtem: ten by si musel natáhnout
+ * synchronizaci, a protože synchronizace si natahuje jeho, vznikl by kruh.
+ * V kruhu jeden z modulů dostane při načtení ještě nedokončený druhý a
+ * `signedIn` je v tu chvíli `undefined`.
+ */
+watch(signedIn, (yes) => {
+  if (!yes) stateReady.value = false
+})
 
 /** Nejkratší interval mezi automatickými synchronizacemi. */
 const MIN_INTERVAL_MS = 5 * 60 * 1000
@@ -119,7 +144,16 @@ export async function maybeSync(): Promise<void> {
   const status = todayStatus.value
   void setBadge(Math.max(0, status.blocksTarget - status.blocksDone))
 
-  if (!isServerConfigured()) return
+  if (!isServerConfigured()) {
+    // Bez přihlášení není na co čekat – platí to, co je v telefonu.
+    stateReady.value = true
+    return
+  }
   void resubscribeOnLaunch()
-  await syncNow(false)
+  try {
+    await syncNow(false)
+  } finally {
+    // I neúspěch je odpověď: víc už se nedozvíme a appka musí jet dál.
+    stateReady.value = true
+  }
 }

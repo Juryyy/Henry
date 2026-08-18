@@ -1,5 +1,12 @@
-import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router'
+import {
+  createRouter,
+  createWebHashHistory,
+  type RouteLocationNormalized,
+  type RouteLocationRaw,
+  type RouteRecordRaw,
+} from 'vue-router'
 import { state } from './stores/app'
+import { stateReady } from './lib/sync'
 
 /**
  * Hash historie schválně – appka takhle funguje i na GitHub Pages nebo
@@ -94,17 +101,31 @@ export const router = createRouter({
 })
 
 /**
- * Dokud uživatel neprojde úvodním průvodcem, nemá smysl ho pouštět do appky –
- * viděl by výchozí cíle, které o něm nic neví.
+ * Kam uživatele pustit. `null` znamená „tam, kam šel“. Dokud neprojde úvodním
+ * průvodcem, nemá smysl ho pouštět do appky – viděl by výchozí cíle, které
+ * o něm nic neví.
+ *
+ * Je to funkce, ne jen tělo strážce, protože rozhodnutí padá dvakrát: při
+ * navigaci a znovu ve chvíli, kdy dorazí data ze serveru. Opakovaná navigace
+ * na tu samou adresu totiž strážce nespustí (router ji zahodí jako duplicitní),
+ * takže by se rozhodnutí po synchronizaci nikdy neopravilo.
  */
-router.beforeEach((to) => {
+export function guardDestination(to: RouteLocationNormalized): RouteLocationRaw | null {
+  // Dokud nedoběhla první synchronizace, nevíme, jestli je uživatel nový,
+  // nebo jen otevřel appku na novém zařízení. Rozhodnout se v tu chvíli
+  // znamená poslat dlouholetého uživatele do průvodce, který by mu po
+  // dokončení přepsal cíl, úroveň i datum začátku.
+  if (!stateReady.value) return null
+
   const onboarded = !!state.settings.onboardedAt
   // Zpátky do průvodce se jít nedá. Znovu projitý průvodce by přepsal cíl,
   // úroveň i datum začátku – a tím shodil sérii i historii.
-  if (to.name === 'start') return onboarded ? { path: '/' } : true
-  if (to.meta.public) return true
-  return onboarded ? true : { name: 'start' }
-})
+  if (to.name === 'start') return onboarded ? { path: '/' } : null
+  if (to.meta.public) return null
+  return onboarded ? null : { name: 'start' }
+}
+
+router.beforeEach((to) => guardDestination(to) ?? true)
 
 router.afterEach((to) => {
   const title = to.meta.title as string | undefined

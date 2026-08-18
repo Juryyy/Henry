@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { guardDestination } from '@/router'
 import TabBar from '@/components/TabBar.vue'
 import MilestoneToast from '@/components/MilestoneToast.vue'
 import SignInView from '@/views/SignInView.vue'
 import { applyUpdate, isIos, isStandalone, updateAvailable } from '@/lib/sw-client'
-import { maybeSync } from '@/lib/sync'
+import { maybeSync, stateReady } from '@/lib/sync'
 import { authReady, signedIn } from '@/stores/auth'
 
 const route = useRoute()
+const router = useRouter()
 // Dokud nevíme, jestli jsme přihlášení, nemá smysl ukazovat ani appku,
 // ani přihlášení – prázdná obrazovka na půl vteřiny je lepší než probliknutí.
 const showTabs = computed(() => signedIn.value && !route.meta.fullscreen)
@@ -32,6 +34,23 @@ watch(signedIn, (yes) => {
   if (yes) void maybeSync()
 }, { immediate: true })
 
+/**
+ * Jakmile data dorazí, rozhodnutí padne znovu – tentokrát podle skutečného
+ * stavu, ne podle prázdné místní kopie. Volá se ta samá funkce jako ve
+ * strážci: opakovaná navigace na tu samou adresu by ho nespustila.
+ */
+watch(stateReady, (ready) => {
+  if (!ready) return
+  const target = guardDestination(router.currentRoute.value)
+  if (target) void router.replace(target)
+})
+
+/**
+ * Než se stav ustálí, appka se neukazuje. Půl vteřiny prázdna je lepší než
+ * probliknutí úvodního průvodce někomu, kdo ho prošel před půl rokem.
+ */
+const booting = computed(() => !authReady.value || (signedIn.value && !stateReady.value))
+
 function dismissHint(): void {
   localStorage.setItem('henry.installHintDismissed', '1')
   showInstallHint.value = false
@@ -53,7 +72,7 @@ function dismissHint(): void {
       <button class="btn btn-sm btn-primary" @click="applyUpdate">Načíst</button>
     </div>
 
-    <template v-if="!authReady">
+    <template v-if="booting">
       <div class="loading" />
     </template>
 

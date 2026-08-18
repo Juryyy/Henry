@@ -108,4 +108,47 @@ test.describe('úvodní průvodce', () => {
     // rovnou vyplo na cíli, který je pod aktuálním.
     expect(state.settings.steps.goalWeeklyTarget).toBeGreaterThanOrEqual(84_500)
   })
+
+  test('kdo průvodce prošel, už ho po přihlášení znovu nedostane', async ({ page, context }) => {
+    // Čerstvý prohlížeč: místní kopie je prázdná, ale na serveru historie je.
+    // Bez čekání na první synchronizaci by appka poslala dlouholetého
+    // uživatele do průvodce – a ten by mu po dokončení přepsal cíl i začátek.
+    const USER = { id: 'u1', email: 'ja@example.com', name: 'Martin', createdAt: '' }
+    await context.route('**/api/**', async (route) => {
+      const url = route.request().url()
+      const json = (body: unknown, status = 200): Promise<void> =>
+        route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+
+      if (url.includes('/api/auth/me')) return json({ user: USER, subscriptions: 0, passkeys: 0 })
+      if (url.includes('/api/health')) {
+        return json({ ok: true, now: { date: '', minutes: 0, weekday: 0 }, scheduler: true, registrationOpen: false })
+      }
+      if (url.includes('/api/state')) {
+        // Server odpoví se zpožděním, jako skutečná síť.
+        await new Promise((r) => setTimeout(r, 400))
+        return json({
+          rev: 7,
+          applied: 0,
+          skipped: 0,
+          records: [
+            {
+              kind: 'settings',
+              id: 'profile',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              payload: { name: 'Martin', startDate: '2026-01-01', onboardedAt: '2026-01-01T00:00:00.000Z' },
+            },
+          ],
+        })
+      }
+      return json({ ok: true, steps: [], serverSteps: null })
+    })
+
+    await page.goto('/#/')
+    await ready(page)
+
+    // Musí být rovnou v appce, ne v průvodci.
+    await expect(page.getByRole('link', { name: 'Dnes' })).toBeVisible()
+    await expect(page.getByText('Kolik teď nachodíš denně?')).toHaveCount(0)
+    expect(page.url()).not.toContain('/start')
+  })
 })

@@ -94,6 +94,64 @@ export async function pullSteps(server: ServerSettings, days = 14): Promise<Serv
   return data.steps ?? []
 }
 
+/* ------------------------------------------------------------------ */
+/*  Synchronizace dat mezi zařízeními                                  */
+/* ------------------------------------------------------------------ */
+
+export interface SyncRecord {
+  kind: string
+  id: string
+  updatedAt: string
+  deleted?: boolean
+  payload?: unknown
+  rev?: number
+}
+
+export interface StateSyncResult {
+  rev: number
+  applied: number
+  skipped: number
+  records: SyncRecord[]
+}
+
+/**
+ * Nahraje změněné záznamy a rovnou si odnese to, co mezitím nahrálo jiné
+ * zařízení. Jedno kolo místo dvou – na mobilních datech se to pozná.
+ */
+export async function pushState(
+  server: ServerSettings,
+  since: number,
+  records: SyncRecord[],
+): Promise<StateSyncResult> {
+  const url = api(server, '/api/state')
+  if (!url) throw new Error('Server není nastavený.')
+  return request<StateSyncResult>(url, {
+    method: 'POST',
+    headers: headers(server),
+    body: JSON.stringify({ since, records }),
+  })
+}
+
+export interface StateVersion {
+  rev: number
+  at: string
+  records: number
+}
+
+export async function fetchVersions(
+  server: ServerSettings,
+): Promise<{ versions: StateVersion[]; stats: { rev: number; records: number; kinds: Record<string, number> } }> {
+  const url = api(server, '/api/state/versions')
+  if (!url) throw new Error('Server není nastavený.')
+  return request(url, { method: 'GET', headers: headers(server) })
+}
+
+export async function restoreVersion(server: ServerSettings, rev: number): Promise<{ restored: number }> {
+  const url = api(server, '/api/state/restore')
+  if (!url) throw new Error('Server není nastavený.')
+  return request(url, { method: 'POST', headers: headers(server), body: JSON.stringify({ rev }) })
+}
+
 export async function sendTestPush(server: ServerSettings): Promise<{ sent: number; removed: number; failed: number }> {
   const url = api(server, '/api/test')
   if (!url) throw new Error('Server není nastavený.')

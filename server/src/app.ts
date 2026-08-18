@@ -13,6 +13,15 @@ import { tick } from './scheduler.js'
 import { zonedNow } from './time.js'
 import { coerceSteps, extractDailySteps, isValidDateKey, type HaePayload } from './health-export.js'
 import {
+  currentRev,
+  listSnapshots,
+  pullRecords,
+  pushRecords,
+  restoreSnapshot,
+  saveSnapshot,
+  syncStats,
+} from './sync-store.js'
+import {
   addLog,
   DEFAULT_SCHEDULE,
   getDb,
@@ -44,6 +53,8 @@ app.use(
  */
 const json = express.json({ limit: '256kb' })
 const bigJson = express.json({ limit: '25mb' })
+/** První synchronizace nese celou historii – pár set kilobajtů. */
+const stateJson = express.json({ limit: '8mb' })
 
 /**
  * Apple Shortcuts umí poslat tělo jako „Soubor“ (což je spolehlivější cesta,
@@ -288,6 +299,67 @@ app.post('/api/tick', requireAuth, async (_req, res) => {
 
 app.get('/api/log', requireAuth, (_req, res) => {
   res.json({ log: getDb().log.slice(0, 100) })
+})
+
+/* ------------------------------------------------------------------ */
+/*  Synchronizace dat mezi zařízeními                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Stažení. `since` je poslední revize, kterou zařízení vidělo – server pošle
+ * jen to, co od té doby přibylo. `since=0` znamená „jsem nový, dej mi všechno“.
+ */
+app.get('/api/state', requireAuth, (req: Request, res: Response) => {
+  const since = Number(req.query.since)
+  const from = Number.isFinite(since) && since > 0 ? Math.floor(since) : 0
+  const { rev, records } = pullRecords(from)
+  res.json({ rev, records, count: records.length })
+})
+
+/**
+ * Nahrání. Server slučuje po záznamech: novější `updatedAt` vyhrává.
+ * Odpověď rovnou nese i to, co mezitím nahrálo jiné zařízení, aby stačilo
+ * jedno kolo místo dvou.
+ */
+app.post('/api/state', requireAuth, stateJson, (req: Request, res: Response) => {
+  const body = req.body as { records?: unknown; since?: unknown } | undefined
+  const incoming = Array.isArray(body?.records) ? body.records : []
+  if (incoming.length > 20_000) {
+    res.status(413).json({ error: 'Příliš mnoho záznamů najednou.' })
+    return
+  }
+
+  const sinceRaw = Number(body?.since)
+  const since = Number.isFinite(sinceRaw) && sinceRaw > 0 ? Math.floor(sinceRaw) : 0
+
+  const result = pushRecords(incoming)
+  const { rev, records } = pullRecords(since)
+  if (result.applied > 0) {
+    addLog('sync', `přijato ${result.applied} záznamů (rev ${rev})`)
+    saveSnapshot()
+  }
+
+  res.json({ rev, applied: result.applied, skipped: result.skipped, records })
+})
+
+/** Verze stavu k případnému návratu. */
+app.get('/api/state/versions', requireAuth, (_req, res) => {
+  res.json({ versions: listSnapshots(), stats: syncStats() })
+})
+
+app.post('/api/state/restore', requireAuth, json, (req: Request, res: Response) => {
+  const rev = Number((req.body as { rev?: unknown })?.rev)
+  if (!Number.isFinite(rev) || rev <= 0) {
+    res.status(400).json({ error: 'Chybí číslo verze.' })
+    return
+  }
+  const result = restoreSnapshot(Math.floor(rev))
+  if (!result) {
+    res.status(404).json({ error: 'Taková verze tu není.' })
+    return
+  }
+  addLog('sync', `návrat k verzi ${rev}`)
+  res.json({ ...result, rev: currentRev() })
 })
 
 /* ------------------------------------------------------------------ */

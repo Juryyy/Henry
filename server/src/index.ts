@@ -7,8 +7,12 @@ import { app } from './app.js'
 import { config } from './config.js'
 import { startScheduler } from './scheduler.js'
 import { loadDb, persist } from './store.js'
+import { openSyncDb } from './sync-store.js'
 
 loadDb()
+// Otevřít hned při startu, ať se případný problém s úložištěm projeví teď
+// a ne až při první synchronizaci z telefonu.
+openSyncDb()
 
 const server = app.listen(config.port, config.host, () => {
   console.log(`[henry] server běží na http://${config.host}:${config.port} (${config.timezone})`)

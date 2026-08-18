@@ -17,6 +17,7 @@ import {
   summarizeWeek,
 } from '@/lib/engine'
 import { checkMilestones, type Milestone } from '@/lib/milestones'
+import { touch, touchEverything, touchSettings, tombstone } from '@/lib/sync-records'
 import { exportState, flushState, importState, loadState, saveState } from '@/lib/storage'
 import type {
   AppState,
@@ -138,6 +139,7 @@ export function setSteps(date: DateKey, steps: number, source: StepSource = 'man
   day.steps = Math.max(0, Math.round(steps))
   day.stepsSource = source
   day.stepsUpdatedAt = new Date().toISOString()
+  touch(state, 'day', date)
   // Dopsané kroky do už uzavřeného týdne musí přepočítat dluh – jinak by
   // v knize zůstalo číslo z doby, kdy ta data ještě nebyla zapsaná.
   recalculateFrom(state, date, today.value)
@@ -151,10 +153,12 @@ export function addSteps(date: DateKey, delta: number): void {
 
 export function setRestDay(date: DateKey, rest: boolean): void {
   ensureDay(date).restDay = rest
+  touch(state, 'day', date)
 }
 
 export function setNote(date: DateKey, note: string): void {
   ensureDay(date).note = note.trim() || undefined
+  touch(state, 'day', date)
 }
 
 /* ------------------------------------------------------------------ */
@@ -192,6 +196,7 @@ export function toggleExerciseDone(
     const skipped = block.skippedExerciseIds.indexOf(exerciseId)
     if (skipped >= 0) block.skippedExerciseIds.splice(skipped, 1)
   }
+  touch(state, 'day', date)
 }
 
 export function skipExercise(
@@ -204,6 +209,7 @@ export function skipExercise(
   if (!block.skippedExerciseIds.includes(exerciseId)) block.skippedExerciseIds.push(exerciseId)
   const done = block.doneExerciseIds.indexOf(exerciseId)
   if (done >= 0) block.doneExerciseIds.splice(done, 1)
+  touch(state, 'day', date)
 }
 
 export function completeBlock(
@@ -215,6 +221,7 @@ export function completeBlock(
   const block = getBlockLog(date, slot, planId)
   block.completedAt = new Date().toISOString()
   if (durationSec !== undefined) block.durationSec = Math.round(durationSec)
+  touch(state, 'day', date)
   recalculateFrom(state, date, today.value)
   queueMilestoneCheck()
 }
@@ -225,6 +232,7 @@ export function uncompleteBlock(date: DateKey, slot: BlockSlot): void {
   if (block) {
     block.completedAt = undefined
     block.durationSec = undefined
+    touch(state, 'day', date)
   }
 }
 
@@ -245,6 +253,7 @@ export function toggleTaskDone(taskId: string, date: DateKey = today.value): voi
   else log.dates.push(date)
   log.dates.sort()
   state.weeklyTaskLogs[key] = log
+  touch(state, 'task_log', key)
   queueMilestoneCheck()
 }
 
@@ -252,10 +261,12 @@ export function upsertTask(task: WeeklyTask): void {
   const idx = state.weeklyTasks.findIndex((t) => t.id === task.id)
   if (idx >= 0) state.weeklyTasks[idx] = task
   else state.weeklyTasks.push(task)
+  touch(state, 'task', task.id)
 }
 
 export function removeTask(taskId: string): void {
   state.weeklyTasks = state.weeklyTasks.filter((t) => t.id !== taskId)
+  tombstone(state, 'task', taskId)
 }
 
 /* ------------------------------------------------------------------ */
@@ -269,10 +280,12 @@ export function saveMeasurement(m: Measurement): void {
   if (idx >= 0) state.measurements[idx] = { ...state.measurements[idx], ...clean }
   else state.measurements.push(clean)
   state.measurements.sort((a, b) => a.date.localeCompare(b.date))
+  touch(state, 'measurement', m.date)
 }
 
 export function removeMeasurement(date: DateKey): void {
   state.measurements = state.measurements.filter((m) => m.date !== date)
+  tombstone(state, 'measurement', date)
 }
 
 /* ------------------------------------------------------------------ */
@@ -298,6 +311,7 @@ export function declareBankruptcy(kind: LedgerKind | 'all', reason?: string): bo
     .filter((e) => e.week === prev && (kind === 'all' || e.kind === kind))
     .reduce((sum, e) => sum + e.debt, 0)
   state.bankruptcies.push({ date: today.value, kind, clearedDebt: cleared, reason })
+  touch(state, 'bankruptcy', `${today.value}|${kind}`)
   return true
 }
 
@@ -308,6 +322,48 @@ export function declareBankruptcy(kind: LedgerKind | 'all', reason?: string): bo
 export function updateSettings(patch: Partial<Settings>): void {
   Object.assign(state.settings, patch)
 }
+
+/* ------------------------------------------------------------------ */
+/*  Razítkování nastavení                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Nastavení se v obrazovkách mění přímo (`s.steps.weeklyTarget = …`), ne přes
+ * jedinou funkci. Hlídat každé místo by nešlo udržet, takže se sleduje samotný
+ * objekt. Během slučování ze serveru se razítkovat nesmí – jinak by zařízení
+ * hned zase nahrálo to, co právě stáhlo.
+ */
+let applyingRemote = false
+
+export function withRemoteApply<T>(fn: () => T): T {
+  applyingRemote = true
+  try {
+    return fn()
+  } finally {
+    applyingRemote = false
+  }
+}
+
+for (const section of ['steps', 'exercise', 'notifications'] as const) {
+  watch(
+    () => state.settings[section],
+    () => {
+      if (!applyingRemote) touchSettings(state, section)
+    },
+    // `flush: 'sync'` je podstatné: výchozí watcher by doběhl až v dalším
+    // tiku, tedy po tom, co `withRemoteApply` příznak zase shodí – a razítko
+    // by se nasadilo i na data právě stažená ze serveru.
+    { deep: true, flush: 'sync' },
+  )
+}
+
+watch(
+  () => [state.settings.name, state.settings.timezone, state.settings.startDate, state.settings.onboardedAt],
+  () => {
+    if (!applyingRemote) touchSettings(state, 'profile')
+  },
+  { flush: 'sync' },
+)
 
 export function exportJson(): string {
   return exportState(state)
@@ -325,6 +381,9 @@ export function importJson(json: string): void {
   state.bankruptcies = []
   state.achievements = {}
   Object.assign(state, next)
+  // Naimportovaná data musí vyhrát nad tím, co leží na serveru – jinak by je
+  // první synchronizace přebila zpátky tím, co v telefonu bylo předtím.
+  touchEverything(state)
   persistPaused = false
   flushState(state)
   refreshClock()

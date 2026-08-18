@@ -1,8 +1,13 @@
 # Server na Raspberry Pi
 
-Appka funguje i bez serveru. Jediné, co bez něj nejde, jsou **notifikace
-v naplánovaný čas při zavřené appce** – ty musí spustit něco, co v ten čas běží
-jinde než v telefonu. Tady je návod, jak to „něco" rozjet na Raspberry.
+Appka funguje i bez serveru, ale dvě věci bez něj nejdou:
+
+- **notifikace v naplánovaný čas při zavřené appce** – ty musí spustit něco,
+  co v ten čas běží jinde než v telefonu,
+- **data mimo telefon** – záloha, která přežije výměnu telefonu, a společná
+  data mezi telefonem a notebookem.
+
+Tady je návod, jak to „něco" rozjet na Raspberry.
 
 Zvládne to i Pi Zero 2 W. Server je jeden Node proces, který devadesát devět
 procent času spí a jednou za minutu se podívá na hodinky.
@@ -125,6 +130,8 @@ V appce na telefonu: **Nastavení → Server**
 3. **Otestovat spojení** – musí napsat, že server odpovídá.
 4. **Zapnout notifikace** – iOS se zeptá na povolení.
 5. **Test ze serveru** – za chvíli to musí cinknout.
+6. **Synchronizovat** – od téhle chvíle se data drží i mimo telefon. Na dalším
+   zařízení stačí vyplnit tutéž adresu a token a data se stáhnou sama.
 
 > Notifikace na iPhonu fungují **jen** když je appka přidaná na plochu
 > a spuštěná z ikony, ne z karty v Safari. V Safari objekt `Notification`
@@ -141,12 +148,17 @@ cd Henry && git pull
 cd server && docker compose up -d --build
 ```
 
-**Záloha dat serveru** (odběry notifikací a kroky ze Zkratky – historie cvičení
-je v telefonu, ne tady):
+**Záloha dat serveru.** Server drží dva soubory: `db.json` (odběry notifikací,
+rozvrh) a `henry.sqlite` (**tvoje data** – dny, cvičení, úkoly, míry). Ten druhý
+je ten, o který nechceš přijít:
 
 ```bash
+docker compose cp henry:/app/data/henry.sqlite ./henry-zaloha.sqlite
 docker compose cp henry:/app/data/db.json ./db-zaloha.json
 ```
+
+Server si navíc po každé synchronizaci sám odkládá posledních třicet verzí
+stavu – vrátit se k nim jde přímo v appce (Nastavení → Verze na serveru).
 
 **Co se děje:**
 

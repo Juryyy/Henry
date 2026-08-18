@@ -11,3 +11,5 @@ process.env.TZ_NAME = 'Europe/Prague'
 process.env.SCHEDULER = 'off'
 // Do repozitáře se při testech nesmí nic zapsat – databáze jde do temp.
 process.env.DATA_FILE = join(tmpdir(), `henry-test-${process.pid}.json`)
+// SQLite jede v testech v paměti – žádný soubor po sobě neuklízíme.
+process.env.SYNC_FILE = ':memory:'

@@ -74,6 +74,12 @@ Nebo si je zapíšeš ručně, appka funguje i tak.
 
 **Pokrok** – váha, obvod pasu, kolik centimetrů ti chybí na zem, výdrž v prkně.
 
+**Synchronizace mezi zařízeními.** Se serverem se data drží i mimo telefon,
+takže výměnu telefonu přežijí a na notebooku vidíš totéž. Slučuje se **po
+záznamech**, ne přes celý stav: ranní odškrtnutý blok z telefonu a odpolední
+zápis kroků z notebooku přežijí oba. Server si po každé synchronizaci odkládá
+stav stranou, takže jde vrátit i to, co si sám rozbiješ.
+
 ---
 
 ## Jak je to poskládané
@@ -86,12 +92,15 @@ app/       PWA (Vue 3 + Vite + TypeScript). Data žijí v telefonu.
 server/    Malý Node/Express: posílá notifikace a přebírá kroky z Health.
 ```
 
-Zdrojem pravdy jsou data v telefonu. Server nedrží tvoji historii cvičení –
-jen odběry notifikací, snímek dnešního stavu (aby uměl napsat „chybí ti
-3 200 kroků“ místo obecné hlášky) a kroky nahrané ze Zkratky.
+Data se zapisují v telefonu a odtud tečou na server, který je slévá s tím,
+co přišlo z jiných zařízení. Server drží dvě oddělené věci: **provozní stav**
+(odběry notifikací, rozvrh, snímek dneška – JSON soubor) a **tvoje data**
+(dny, míry, úkoly – SQLite). Jsou to dvě různé věci s různým životním cyklem,
+proto dva soubory.
 
 **Bez serveru appka funguje**: zapisuješ kroky ručně, odškrtáváš bloky, všechno
-počítá. Nefunguje jediná věc – notifikace v naplánovaný čas při zavřené appce.
+počítá – jen data zůstanou v tom jednom telefonu a zálohu si musíš stáhnout
+ručně. Nefunguje ani notifikace v naplánovaný čas při zavřené appce.
 A to není nedodělek: na iOS neexistuje způsob, jak to udělat z prohlížeče.
 Notification Triggers API se nikdy nedodělalo, Periodic Background Sync na iOS
 není a časovač v service workeru nepřežije jeho ukončení (~30 s nečinnosti).
@@ -101,7 +110,7 @@ Notifikaci v konkrétní čas může spustit jedině něco, co v ten čas běž�
 
 ## Rozjezd
 
-Potřebuješ Node 22+.
+Potřebuješ Node 22.5+ (kvůli vestavěnému `node:sqlite`).
 
 ```bash
 # appka
@@ -124,14 +133,14 @@ Pak v appce **Nastavení → Server**: adresa serveru a token. Tlačítko
 
 ```bash
 cd app
-npm test          # jednotkové testy výpočtů a plánu (91)
-npm run e2e       # e2e testy v prohlížeči (35) – projdou appku jako uživatel
+npm test          # jednotkové testy výpočtů, plánu a slučování (113)
+npm run e2e       # e2e testy v prohlížeči (38) – projdou appku jako uživatel
 npm run typecheck
 npm run build
 npm run screenshots  # přegeneruje obrázky v docs/screenshots
 
 cd ../server
-npm test          # plánovač, HTTP rozhraní, texty notifikací, příjem z Health (78)
+npm test          # plánovač, HTTP rozhraní, slučování dat, texty notifikací (106)
 npm run typecheck
 npm run build
 ```
@@ -247,6 +256,17 @@ to a běž za fyzioterapeutem.
 
 ## Data
 
-Všechno leží v `localStorage` telefonu. Když smažeš ikonu z plochy, data zmizí
-s ní – proto je v Nastavení → Data stažení zálohy. Sedmidenní mazání úložiště,
-kterým Safari trestá běžné weby, se na appky přidané na plochu nevztahuje.
+V telefonu leží pracovní kopie v `localStorage`; appka díky ní funguje offline
+a reaguje okamžitě. Se serverem se tatáž data drží i v SQLite, takže výměnu
+telefonu přežijí.
+
+Slučování je **last-write-wins po záznamech**: každý den, míra i úkol nese čas
+poslední změny a novější zápis vyhrává. Dluhová kniha se schválně nepřenáší –
+je odvozená z dnů a nastavení, takže si ji každé zařízení po sloučení spočítá
+samo. Adresa serveru a token se taky nepřenášejí; patří zařízení, ne datům.
+
+Smazané záznamy cestují jako náhrobek, jinak by je zastaralé zařízení vzkřísilo.
+
+Bez serveru je jediná pojistka stažená záloha (Nastavení → Data). Sedmidenní
+mazání úložiště, kterým Safari trestá běžné weby, se na appky přidané na plochu
+nevztahuje – data zmizí až se smazanou ikonou.

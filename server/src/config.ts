@@ -30,8 +30,11 @@ export const config = {
     subject: process.env.VAPID_SUBJECT ?? 'mailto:henry@example.com',
   },
 
-  /** Kam se ukládá databáze (jeden JSON soubor, je to appka pro jednoho člověka). */
+  /** Provozní stav serveru: odběry, rozvrh, co už dnes odešlo. */
   dataFile: resolve(process.env.DATA_FILE ?? './data/db.json'),
+
+  /** Synchronizovaná data uživatele (dny, měření, úkoly). SQLite. */
+  syncFile: resolve(process.env.SYNC_FILE ?? './data/henry.sqlite'),
 
   /** Povolené originy pro CORS. '*' = cokoli (appka běží na tvé doméně / Pages). */
   corsOrigins: (process.env.CORS_ORIGINS ?? '*').split(',').map((s) => s.trim()),

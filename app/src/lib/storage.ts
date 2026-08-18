@@ -1,8 +1,9 @@
+import { touchEverything } from './sync-records'
 import type { AppState, Settings, WeeklyTask } from './types'
 import { todayKey } from './date'
 
 const STORAGE_KEY = 'henry.state.v1'
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 /* ------------------------------------------------------------------ */
 /*  Výchozí hodnoty                                                    */
@@ -83,6 +84,7 @@ export function defaultState(): AppState {
     ledger: [],
     bankruptcies: [],
     achievements: {},
+    meta: { updatedAt: {}, deleted: {} },
   }
 }
 
@@ -120,6 +122,13 @@ function migrate(raw: Record<string, unknown>): Record<string, unknown> {
     settings.onboardedAt = new Date().toISOString()
   }
 
+  // Synchronizace přibyla ve verzi 2. Starší stav nemá u ničeho čas změny –
+  // orazítkuje se všechno teď, takže první synchronizace nahraje celou
+  // historii na server a nic se neztratí.
+  if (!state.meta) {
+    state.meta = { updatedAt: {}, deleted: {}, stampAll: true }
+  }
+
   state.schemaVersion = SCHEMA_VERSION
   return state
 }
@@ -140,7 +149,13 @@ export function loadState(): AppState {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return defaultState()
     const parsed = migrate(JSON.parse(raw) as Record<string, unknown>)
-    return mergeDefaults(defaultState(), parsed)
+    const state = mergeDefaults(defaultState(), parsed)
+    const meta = state.meta as unknown as Record<string, unknown>
+    if (meta.stampAll) {
+      delete meta.stampAll
+      touchEverything(state)
+    }
+    return state
   } catch (err) {
     console.error('[henry] stav se nepodařilo načíst, začínám na čisto', err)
     return defaultState()

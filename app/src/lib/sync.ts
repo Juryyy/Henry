@@ -9,8 +9,9 @@
  */
 
 import { ref } from 'vue'
-import { pullSteps, syncWithServer } from './api'
-import { buildSnapshot, setSteps, state, today, todayStatus } from '@/stores/app'
+import { pullSteps, pushState, syncWithServer } from './api'
+import { buildSnapshot, setSteps, state, today, todayStatus, withRemoteApply } from '@/stores/app'
+import { applyRecords, collectChanged } from './sync-records'
 import { resubscribeOnLaunch, setBadge } from './sw-client'
 import { todayKey } from './date'
 import { recalculateFrom } from './engine'
@@ -67,6 +68,8 @@ export async function syncNow(force = false): Promise<boolean> {
     // jinak by v knize zůstal dluh z dat, která tehdy ještě nebyla k dispozici.
     if (oldestChanged) recalculateFrom(state, oldestChanged, today.value)
 
+    await syncRecords()
+
     state.settings.server.lastSyncAt = new Date().toISOString()
     return true
   } catch (err) {
@@ -74,6 +77,36 @@ export async function syncNow(force = false): Promise<boolean> {
     return false
   } finally {
     syncing.value = false
+  }
+}
+
+/**
+ * Vlastní výměna dat mezi zařízeními.
+ *
+ * Pošle se, co se od minule změnilo, a v téže odpovědi se vrátí, co mezitím
+ * nahrálo jiné zařízení. Slučuje se po záznamech, takže ranní odškrtnutý blok
+ * z telefonu a odpolední zápis kroků z notebooku přežijí oba.
+ */
+async function syncRecords(): Promise<void> {
+  // Čas se bere PŘED odesláním. Kdyby se bral až po odpovědi, změna vzniklá
+  // během požadavku by se tvářila jako už nahraná a nikdy by neodešla.
+  const startedAt = new Date().toISOString()
+  const changed = collectChanged(state, state.meta.pushedAt)
+
+  const result = await pushState(state.settings.server, state.meta.rev ?? 0, changed)
+
+  const applied = withRemoteApply(() => applyRecords(state, result.records))
+
+  state.meta.rev = result.rev
+  state.meta.pushedAt = startedAt
+  state.meta.syncedAt = new Date().toISOString()
+
+  // Dluhová kniha se nepřenáší – je odvozená. Po sloučení cizích dnů nebo
+  // změněného nastavení se musí přepočítat, jinak by ukazovala starý dluh.
+  if (applied.oldestChangedDay) {
+    recalculateFrom(state, applied.oldestChangedDay, today.value)
+  } else if (applied.settingsChanged) {
+    recalculateFrom(state, state.settings.startDate, today.value)
   }
 }
 

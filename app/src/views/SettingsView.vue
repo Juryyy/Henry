@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { checkHealth, sendTestPush } from '@/lib/api'
+import { checkHealth, fetchVersions, restoreVersion, sendTestPush, type StateVersion } from '@/lib/api'
 import { dec, num, parseNumber, plural } from '@/lib/format'
 import { EXERCISES } from '@/data/exercises'
 import { debtCap, weeklyBlockTarget } from '@/lib/engine'
@@ -168,6 +168,44 @@ async function testServer(): Promise<void> {
 async function doSync(): Promise<void> {
   const ok = await syncNow(true)
   serverStatus.value = ok ? 'Synchronizováno.' : (lastSyncError.value ?? 'Nepodařilo se.')
+}
+
+/* Verze na serveru ------------------------------------------------------- */
+
+const versions = ref<StateVersion[]>([])
+const versionMessage = ref('')
+const confirmVersion = ref<number | null>(null)
+
+async function loadVersions(): Promise<void> {
+  versionMessage.value = ''
+  try {
+    const data = await fetchVersions(s.value.server)
+    versions.value = data.versions
+    if (versions.value.length === 0) versionMessage.value = 'Na serveru zatím nic není.'
+  } catch (err) {
+    versionMessage.value = `Nepovedlo se: ${(err as Error).message}`
+  }
+}
+
+/** Vrácení k verzi je destruktivní – proto na dvě klepnutí. */
+async function doRestore(rev: number): Promise<void> {
+  if (confirmVersion.value !== rev) {
+    confirmVersion.value = rev
+    setTimeout(() => {
+      if (confirmVersion.value === rev) confirmVersion.value = null
+    }, 5_000)
+    return
+  }
+  confirmVersion.value = null
+  versionMessage.value = 'Vracím…'
+  try {
+    await restoreVersion(s.value.server, rev)
+    // Server má teď starší data s novým časem – stáhnou se běžnou cestou.
+    await syncNow(true)
+    versionMessage.value = 'Hotovo, data jsou zpátky.'
+  } catch (err) {
+    versionMessage.value = `Nepovedlo se: ${(err as Error).message}`
+  }
 }
 
 /* Data ------------------------------------------------------------------ */
@@ -536,15 +574,50 @@ const confirmReset = ref(false)
           <p v-if="s.server.lastSyncAt" class="tiny faint">
             Poslední synchronizace: {{ new Date(s.server.lastSyncAt).toLocaleString('cs-CZ') }}
           </p>
+          <p class="tiny faint">
+            Se serverem se drží i tvoje data – kroky, cvičení, úkoly i míry. Když si Henryho otevřeš
+            na druhém zařízení, uvidíš tam totéž. Slučuje se po záznamech, takže ranní odškrtnutý
+            blok z telefonu a odpolední zápis kroků z notebooku přežijí oba.
+          </p>
         </div>
+      </section>
+
+      <!-- Verze na serveru -------------------------------------------- -->
+      <section v-if="isServerConfigured()" class="card">
+        <div class="card-title">Verze na serveru</div>
+        <p class="tiny faint" style="margin-bottom: 10px">
+          Server si po každé synchronizaci odkládá stav stranou. Když si něco rozbiješ – naimportuješ
+          starou zálohu, vyhlásíš bankrot, smažeš měření – dá se vrátit sem.
+        </p>
+        <button class="btn btn-sm btn-ghost" @click="loadVersions">Načíst verze</button>
+        <ul v-if="versions.length" class="list-reset stack-sm" style="margin-top: 10px">
+          <li v-for="v in versions.slice(0, 10)" :key="v.rev" class="row-between version">
+            <span class="small">
+              {{ new Date(v.at).toLocaleString('cs-CZ') }}
+              <span class="tiny faint">· {{ v.records }} záznamů</span>
+            </span>
+            <button
+              class="btn btn-sm"
+              :class="confirmVersion === v.rev ? 'btn-danger' : 'btn-ghost'"
+              @click="doRestore(v.rev)"
+            >
+              {{ confirmVersion === v.rev ? 'Opravdu vrátit?' : 'Vrátit' }}
+            </button>
+          </li>
+        </ul>
+        <p v-if="versionMessage" class="small muted" style="margin-top: 8px">{{ versionMessage }}</p>
       </section>
 
       <!-- Data -------------------------------------------------------- -->
       <section class="card">
         <div class="card-title">Data</div>
-        <p class="tiny faint" style="margin-bottom: 10px">
-          Všechno je uložené jen v tomhle telefonu. Když smažeš ikonu z plochy, data zmizí s ní –
-          tak si jednou za čas stáhni zálohu.
+        <p v-if="isServerConfigured()" class="tiny faint" style="margin-bottom: 10px">
+          Data žijí v telefonu a zároveň se drží na serveru, takže výměnu telefonu přežijí.
+          Záloha do souboru je navíc – hodí se, než server rozjedeš, a jako pojistka mimo něj.
+        </p>
+        <p v-else class="tiny faint" style="margin-bottom: 10px">
+          Všechno je uložené jen v tomhle telefonu. Když smažeš ikonu z plochy, data zmizí s ní.
+          Než rozjedeš server, je stažená záloha jediná pojistka – dělej si ji.
         </p>
         <div class="row wrap" style="gap: 8px">
           <button class="btn btn-sm btn-ghost" @click="download">Stáhnout zálohu</button>
@@ -558,6 +631,10 @@ const confirmReset = ref(false)
         <p v-if="dataMessage" class="small muted" style="margin-top: 8px">{{ dataMessage }}</p>
 
         <div class="divider" style="margin: 14px 0" />
+        <p v-if="isServerConfigured()" class="tiny c-warn" style="margin-bottom: 8px">
+          Smazání platí jen pro tenhle telefon. Data zůstanou na serveru a při první synchronizaci
+          se vrátí zpátky – když je chceš pryč nadobro, smaž je i tam.
+        </p>
         <button v-if="!confirmReset" class="btn btn-sm btn-ghost" @click="confirmReset = true">Smazat všechno</button>
         <div v-else class="row" style="gap: 8px">
           <button class="btn btn-sm btn-danger grow" @click="resetAll">Opravdu smazat</button>
@@ -574,6 +651,8 @@ const confirmReset = ref(false)
 </template>
 
 <style scoped>
+.version + .version { border-top: 1px solid var(--border); padding-top: 6px; }
+
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 

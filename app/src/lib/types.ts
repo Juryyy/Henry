@@ -262,6 +262,24 @@ export interface Settings {
 /*  Kořenový stav aplikace                                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Doprovodná data pro synchronizaci. Časy změn žijí schválně stranou, aby
+ * se `DayLog`, `Measurement` a spol. nezaplevelily technickými poli, která
+ * s cvičením nemají nic společného.
+ */
+export interface SyncMeta {
+  /** `kind:id` -> ISO čas poslední změny na tomhle zařízení. */
+  updatedAt: Record<string, string>
+  /** `kind:id` -> ISO čas smazání. Náhrobek, aby jiné zařízení záznam nevzkřísilo. */
+  deleted: Record<string, string>
+  /** Poslední revize serveru, kterou tohle zařízení vidělo. */
+  rev?: number
+  /** Kdy se naposledy nahrávalo – co je novější, jde na server znovu. */
+  pushedAt?: string
+  /** Kdy naposledy proběhla celá synchronizace (pro UI). */
+  syncedAt?: string
+}
+
 export interface AppState {
   schemaVersion: number
   settings: Settings
@@ -275,4 +293,6 @@ export interface AppState {
   lastClosedWeek?: WeekKey
   /** Odznaky / milníky, které si uživatel odemkl. */
   achievements: Record<string, string> // id -> ISO datum odemčení
+  /** Časy změn a náhrobky pro synchronizaci mezi zařízeními. */
+  meta: SyncMeta
 }

@@ -14,6 +14,7 @@ vi.mock('./push.js', () => ({
 
 const { app } = await import('./app.js')
 const { getDb, DEFAULT_SCHEDULE } = await import('./store.js')
+const { closeSyncDb, openSyncDb } = await import('./sync-store.js')
 
 const TOKEN = 'testovaci-token'
 
@@ -34,6 +35,10 @@ afterAll(async () => {
 })
 
 beforeEach(() => {
+  // Synchronizovaná data jedou v paměti; mezi testy se začíná na čisto.
+  closeSyncDb()
+  openSyncDb(':memory:')
+
   const db = getDb()
   db.subscriptions = []
   db.snapshot = null
@@ -347,5 +352,90 @@ describe('diagnostika', () => {
     await call('/api/ingest/steps', { body: { date: '2026-08-17', steps: 1_000 } })
     const data = await readJson(await call('/api/log'))
     expect(data.log[0].kind).toBe('steps')
+  })
+})
+
+/* ------------------------------------------------------------------ */
+
+describe('synchronizace dat mezi zařízeními', () => {
+  const den = (id: string, at: string, payload: unknown) => ({ kind: 'day', id, updatedAt: at, payload })
+
+  it('bez tokenu se k datům nikdo nedostane', async () => {
+    expect((await call('/api/state', { token: null })).status).toBe(401)
+    expect((await call('/api/state', { token: null, body: { records: [] } })).status).toBe(401)
+  })
+
+  it('nové zařízení dostane prázdno', async () => {
+    const data = await readJson(await call('/api/state'))
+    expect(data).toMatchObject({ rev: 0, count: 0, records: [] })
+  })
+
+  it('nahraná data se dají stáhnout', async () => {
+    const push = await readJson(
+      await call('/api/state', { body: { records: [den('2026-08-17', '2026-08-17T10:00:00.000Z', { steps: 5_000 })] } }),
+    )
+    expect(push.applied).toBe(1)
+    expect(push.rev).toBe(1)
+
+    const pull = await readJson(await call('/api/state?since=0'))
+    expect(pull.records[0].payload).toEqual({ steps: 5_000 })
+  })
+
+  it('zařízení si řekne jen o to, co od minula přibylo', async () => {
+    await call('/api/state', { body: { records: [den('a', '2026-08-17T10:00:00.000Z', { steps: 1 })] } })
+    const first = await readJson(await call('/api/state'))
+
+    await call('/api/state', { body: { records: [den('b', '2026-08-17T11:00:00.000Z', { steps: 2 })] } })
+    const delta = await readJson(await call(`/api/state?since=${first.rev}`))
+    expect(delta.records.map((r: { id: string }) => r.id)).toEqual(['b'])
+  })
+
+  it('odpověď na nahrání rovnou nese změny od druhého zařízení', async () => {
+    // Notebook nahrál kroky…
+    await call('/api/state', { body: { records: [den('a', '2026-08-17T10:00:00.000Z', { steps: 1 })] } })
+    // …telefon o tom neví a posílá svoje. Musí to stihnout jedním kolem.
+    const data = await readJson(
+      await call('/api/state', { body: { since: 0, records: [den('b', '2026-08-17T11:00:00.000Z', { steps: 2 })] } }),
+    )
+    expect(data.records.map((r: { id: string }) => r.id).sort()).toEqual(['a', 'b'])
+  })
+
+  it('nesmyslné číslo v since se bere jako od začátku', async () => {
+    await call('/api/state', { body: { records: [den('a', '2026-08-17T10:00:00.000Z', { steps: 1 })] } })
+    const data = await readJson(await call('/api/state?since=abc'))
+    expect(data.count).toBe(1)
+  })
+
+  it('tělo bez záznamů nic nerozbije', async () => {
+    const data = await readJson(await call('/api/state', { body: {} }))
+    expect(data).toMatchObject({ applied: 0, rev: 0 })
+  })
+
+  it('nesmyslně velká dávka se odmítne', async () => {
+    const records = Array.from({ length: 20_001 }, (_, i) => den(`d${i}`, '2026-08-17T10:00:00.000Z', { steps: i }))
+    const res = await call('/api/state', { body: { records } })
+    expect(res.status).toBe(413)
+  })
+
+  it('verze stavu se ukládají a dá se k nim vrátit', async () => {
+    await call('/api/state', { body: { records: [den('a', '2026-08-17T10:00:00.000Z', { steps: 5_000 })] } })
+    const versions = await readJson(await call('/api/state/versions'))
+    expect(versions.versions).toHaveLength(1)
+    expect(versions.stats.kinds).toEqual({ day: 1 })
+
+    await call('/api/state', { body: { records: [den('a', '2026-08-17T20:00:00.000Z', { steps: 0 })] } })
+
+    const restore = await readJson(
+      await call('/api/state/restore', { body: { rev: versions.versions[0].rev } }),
+    )
+    expect(restore.restored).toBe(1)
+
+    const pull = await readJson(await call('/api/state'))
+    expect(pull.records[0].payload).toEqual({ steps: 5_000 })
+  })
+
+  it('návrat k neznámé verzi je 404, bez čísla 400', async () => {
+    expect((await call('/api/state/restore', { body: { rev: 999 } })).status).toBe(404)
+    expect((await call('/api/state/restore', { body: {} })).status).toBe(400)
   })
 })

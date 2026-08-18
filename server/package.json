@@ -6,11 +6,11 @@
   "description": "Push server pro Henry PWA - Web Push (VAPID), plánovač připomínek, příjem kroků z Apple Shortcuts",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "NODE_OPTIONS=--experimental-sqlite tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
+    "start": "NODE_OPTIONS=--experimental-sqlite node dist/index.js",
     "keys": "tsx src/scripts/generate-keys.ts",
-    "test": "vitest run",
+    "test": "NODE_OPTIONS=--experimental-sqlite vitest run",
     "typecheck": "tsc -p tsconfig.typecheck.json"
   },
   "dependencies": {
@@ -27,5 +27,8 @@
     "tsx": "^4.23.12",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=22.5"
   }
 }

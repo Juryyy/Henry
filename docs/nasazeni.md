@@ -24,11 +24,15 @@ worker, push ani Face ID). Raspberry je cílový stav, ale dá se začít i jina
 
 Co **nefunguje** a nemá cenu to zkoušet:
 
-- **Render, Railway a podobné free tiery** uspávají kontejner po nečinnosti.
-  Henry devadesát devět procent času spí a jednou za minutu se podívá na
-  hodinky – uspaný kontejner se nepodívá nikdy a notifikace prostě nepřijdou.
-- **Koyeb free** neumí připojit disk k bezplatné instanci, takže by se
-  databáze (účty, klíče, data) při každém nasazení smazala.
+- **Render free** má dva problémy a ten druhý je zabiják. Kontejner se po
+  čtvrthodině nečinnosti uspí, takže naplánované notifikace nemají odkud
+  odejít – to by se dalo přežít. Jenže bezplatná služba k sobě **nemůže
+  připojit disk** a všechno, co si server zapsal, se při uspání, restartu
+  i nasazení ztratí. Databáze se tím vymaže: účty, klíče pro Face ID
+  i historie na serveru. Tvoje data v telefonu zůstanou (appka je local-first
+  a po přihlášení si je nahraje zpátky), ale zakládat si každou čtvrthodinu
+  účet znovu není nasazení.
+- **Koyeb free** je na tom stejně: k bezplatné instanci disk připojit nejde.
 - **Fly.io** free tier v roce 2024 zrušil; jede to od zhruba dvou dolarů
   měsíčně, což je pořád levné, ale zdarma to není.
 - **GitHub Pages a spol.** – tam běží jen statické soubory, ne server.

@@ -106,6 +106,18 @@ test.describe('cvičení', () => {
     await expect(page.getByRole('link', { name: /Protažení hamstringů vleže/ })).toHaveCount(0)
   })
 
+  test('na vypnutý blok se nedá vejít adresou', async ({ page, context }) => {
+    await seed(context)
+    await page.goto('/#/nastaveni')
+    await ready(page)
+    await page.getByRole('checkbox', { name: /Ráno/ }).uncheck()
+
+    // Typicky sem vede stará notifikace z doby, kdy blok ještě běžel.
+    await page.goto('/#/cviceni/0')
+    await ready(page)
+    await expect(page).toHaveURL(/#\/cviceni$/)
+  })
+
   test('vypnuté bloky se propíšou do plánu dne', async ({ page, context }) => {
     await seed(context)
     await page.goto('/#/nastaveni')

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { getExercise } from '@/data/exercises'
 import { getFigure } from '@/data/figures'
 import ExerciseFigure from '@/components/ExerciseFigure.vue'
-import { buildBlock, doseLabel } from '@/lib/plan'
+import { blockConfig, buildBlock, doseLabel } from '@/lib/plan'
 import { formatDuration } from '@/lib/date'
 import { buzz, useTimer } from '@/composables/useTimer'
 import {
@@ -25,6 +25,19 @@ const slot = computed<BlockSlot>(() => {
   const raw = Number(route.params.slot)
   return (Number.isFinite(raw) && raw >= 0 && raw <= 2 ? raw : 0) as BlockSlot
 })
+
+/**
+ * Na vypnutý blok se nedá vejít adresou. Šel by odcvičit, ale v plánu dne
+ * by nikde nebyl – a zůstal by po něm záznam u pozice, kterou uživatel
+ * vypnul. Typicky sem vede stará notifikace z doby, kdy blok ještě běžel.
+ */
+watch(
+  () => blockConfig(state, slot.value).enabled,
+  (enabled) => {
+    if (!enabled) void router.replace('/cviceni')
+  },
+  { immediate: true },
+)
 
 const plan = computed(() => buildBlock(state, today.value, slot.value))
 const log = computed(() => getBlockLog(today.value, slot.value, plan.value.id))

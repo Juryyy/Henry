@@ -125,7 +125,7 @@ Pak v appce **Nastavení → Server**: adresa serveru a token. Tlačítko
 ```bash
 cd app
 npm test          # jednotkové testy výpočtů a plánu (91)
-npm run e2e       # e2e testy v prohlížeči (34) – projdou appku jako uživatel
+npm run e2e       # e2e testy v prohlížeči (35) – projdou appku jako uživatel
 npm run typecheck
 npm run build
 npm run screenshots  # přegeneruje obrázky v docs/screenshots

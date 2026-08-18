@@ -112,6 +112,27 @@ test.describe('nastavení', () => {
     await expect(slider).toHaveAttribute('max', '3')
   })
 
+  test('vymazané číselné pole se srovná, ne uloží jako prázdné', async ({ page, context }) => {
+    await seed(context)
+    await page.goto('/#/nastaveni')
+    await ready(page)
+
+    await page.locator('#goal').fill('')
+    await page.locator('#goal').blur()
+    await expect.poll(async () => typeof (await readState(page)).settings.steps.goalWeeklyTarget).toBe('number')
+    expect((await readState(page)).settings.steps.goalWeeklyTarget).toBeGreaterThanOrEqual(21_000)
+
+    // Mimo rozsah se hodnota přitáhne k mezi, ne uloží jak přišla.
+    await page.locator('#goal').fill('900000')
+    await page.locator('#goal').blur()
+    await expect.poll(async () => (await readState(page)).settings.steps.goalWeeklyTarget).toBe(105_000)
+
+    const share = page.getByLabel('Podíl na Po')
+    await share.fill('')
+    await share.blur()
+    await expect.poll(async () => (await readState(page)).settings.steps.distribution[0]).toBe(0)
+  })
+
   test('nový týdenní úkol se přidá a objeví na dnešku', async ({ page, context }) => {
     await seed(context)
     await page.goto('/#/nastaveni')

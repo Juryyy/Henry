@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { checkHealth, sendTestPush } from '@/lib/api'
-import { dec, num, plural } from '@/lib/format'
+import { dec, num, parseNumber, plural } from '@/lib/format'
 import { EXERCISES } from '@/data/exercises'
 import { debtCap, weeklyBlockTarget } from '@/lib/engine'
 import { isServerConfigured, lastSyncError, syncing, syncNow } from '@/lib/sync'
@@ -54,6 +54,21 @@ const effectiveBlockCap = computed(() => debtCap(state, 'blocks'))
 
 function resetDistribution(): void {
   s.value.steps.distribution = [13, 13, 13, 13, 14, 17, 17]
+}
+
+/**
+ * Číselné pole se dá vymazat a `v-model.number` pak do nastavení uloží
+ * prázdný řetězec. S tím se nedá počítat – cíl by se tvářil jako nula
+ * a laťka by se přestala zvedat. Po odchodu z pole se hodnota srovná.
+ */
+function clampGoal(): void {
+  const value = parseNumber(s.value.steps.goalWeeklyTarget) ?? 49_000
+  s.value.steps.goalWeeklyTarget = Math.round(Math.min(105_000, Math.max(21_000, value)) / 500) * 500
+}
+
+function clampShare(index: number): void {
+  const value = parseNumber(s.value.steps.distribution[index]) ?? 0
+  s.value.steps.distribution[index] = Math.min(40, Math.max(0, Math.round(value)))
 }
 
 /* Úkoly ---------------------------------------------------------------- */
@@ -239,7 +254,15 @@ const confirmReset = ref(false)
 
           <div class="field">
             <label for="goal">Cílová meta (týdně)</label>
-            <input id="goal" v-model.number="s.steps.goalWeeklyTarget" type="number" step="3500" min="21000" max="105000" />
+            <input
+              id="goal"
+              v-model.number="s.steps.goalWeeklyTarget"
+              type="number"
+              step="3500"
+              min="21000"
+              max="105000"
+              @change="clampGoal"
+            />
             <div class="hint">
               7 000 kroků denně (49 000 týdně) je hodnota, za kterou už se v datech křivka zdravotního
               přínosu skoro neohýbá. Deset tisíc je marketingové číslo z japonského krokoměru z roku 1965.
@@ -250,7 +273,14 @@ const confirmReset = ref(false)
             <label>Rozložení cíle přes týden <span class="tiny faint">({{ distributionSum }} %)</span></label>
             <div class="dist">
               <div v-for="(_, i) in s.steps.distribution" :key="i" class="dist-col">
-                <input v-model.number="s.steps.distribution[i]" type="number" min="0" max="40" />
+                <input
+                  v-model.number="s.steps.distribution[i]"
+                  type="number"
+                  min="0"
+                  max="40"
+                  :aria-label="`Podíl na ${WEEKDAYS[i]}`"
+                  @change="clampShare(i)"
+                />
                 <span class="tiny faint">{{ WEEKDAYS[i] }}</span>
               </div>
             </div>

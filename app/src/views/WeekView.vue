@@ -25,7 +25,8 @@ const weekLabel = computed(() => {
   const back = Math.round(daysBetween(viewWeek.value, currentWeek.value) / 7)
   if (back === 0) return 'Tenhle týden'
   if (back === 1) return 'Minulý týden'
-  return `Před ${back} ${back < 5 ? 'týdny' : 'týdny'}`
+  // Instrumentál je v češtině pro všechny počty stejný: „před 2 týdny“ i „před 9 týdny“.
+  return `Před ${back} týdny`
 })
 const canGoForward = computed(() => viewWeek.value < currentWeek.value)
 

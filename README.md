@@ -150,7 +150,10 @@ workeru. Běží i v CI (`.github/workflows/ci.yml`).
 Statický build, hodí se kamkoli. Na GitHub Pages je připravený workflow
 (`.github/workflows/deploy-pages.yml`) – zapni Pages v nastavení repozitáře
 (Settings → Pages → Source: GitHub Actions) a při pushi do `main` se to nasadí
-samo na `https://<uživatel>.github.io/henry/`.
+samo na <https://juryyy.github.io/Henry/>.
+
+Bez toho přepínače build projde, ale nasazení skončí na `404 Not Found` –
+Pages se nedají zapnout z workflow, musí se cvaknout v nastavení repozitáře.
 
 Ručně kamkoli jinam:
 
@@ -164,8 +167,9 @@ BASE_PATH=/ npm run build   # obsah dist/ nahraj na hosting
 
 ### Server
 
-Kdekoli, kde běží Node a je to dostupné přes HTTPS – VPS, Fly.io, Railway,
-Raspberry doma za tunelem. Přiložený je Dockerfile i compose:
+Kdekoli, kde běží Node a je to dostupné přes HTTPS. **Nejlevnější rozumná
+varianta je Raspberry doma za tunelem – návod krok za krokem je
+v [docs/raspberry.md](docs/raspberry.md).** Přiložený je Dockerfile i compose:
 
 ```bash
 cd server

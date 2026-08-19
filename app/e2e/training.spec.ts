@@ -20,7 +20,7 @@ test.describe('cvičení', () => {
     }
 
     await expect(page.getByRole('heading', { name: 'Blok hotový' })).toBeVisible()
-    await page.getByRole('button', { name: 'Zapsat a zavřít' }).click()
+    await page.getByRole('button', { name: 'Zpátky na dnešek' }).click()
     await ready(page)
 
     await expect(page.getByText('1/3 hotovo')).toBeVisible()
@@ -29,6 +29,87 @@ test.describe('cvičení', () => {
     const blocks = state.days[dayKey(0)].blocks.filter((b: any) => b.completedAt)
     expect(blocks).toHaveLength(1)
     expect(blocks[0].slot).toBe(1)
+  })
+
+  test('odcvičený blok se zapíše, i když ho člověk zavře křížkem', async ({ page, context }) => {
+    // Kdo doklikal poslední cvik, odcvičil. Že to appka zapíše až po klepnutí
+    // na „Zapsat a zavřít", ví jenom ona – uživatel zavře křížkem a ráno mu
+    // pak chybí odcvičený blok. Přesně tohle se stalo.
+    await seed(context)
+    await page.goto('/#/cviceni/1')
+    await page.waitForSelector('.dose-card')
+
+    const total = Number((await page.locator('header .num').first().innerText()).split('/')[1])
+    for (let i = 0; i < total; i++) {
+      const skipRest = page.getByRole('button', { name: 'Přeskočit zbytek sérií' })
+      if (await skipRest.count()) await skipRest.click()
+      else await page.getByRole('button', { name: /Hotovo|Spustit/ }).first().click()
+      await page.waitForTimeout(120)
+    }
+    await expect(page.getByRole('heading', { name: 'Blok hotový' })).toBeVisible()
+
+    // Křížkem, ne závěrečným tlačítkem.
+    await page.getByLabel('Zavřít').click()
+    await ready(page)
+
+    const state = await readState(page)
+    const blocks = state.days[dayKey(0)].blocks.filter((b: any) => b.completedAt)
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].slot).toBe(1)
+  })
+
+  test('kdo blok jen prolistuje a nic neodcvičí, hotovo nedostane', async ({ page, context }) => {
+    // Protiváha k předchozímu testu: samo se to smí zapsat jen tehdy, když
+    // se opravdu cvičilo. Jinak by stačilo blok proklikat a den je splněný.
+    await seed(context)
+    await page.goto('/#/cviceni/1')
+    await page.waitForSelector('.dose-card')
+
+    const total = Number((await page.locator('header .num').first().innerText()).split('/')[1])
+    for (let i = 0; i < total; i++) {
+      await page.getByRole('button', { name: 'Tenhle vynechat' }).click()
+      await page.waitForTimeout(120)
+    }
+    await page.getByLabel('Zavřít').click()
+    await ready(page)
+
+    const state = await readState(page)
+    const blocks = state.days[dayKey(0)]?.blocks?.filter((b: any) => b.completedAt) ?? []
+    expect(blocks).toHaveLength(0)
+  })
+
+  test('odcvičený blok odletí na server hned, ne až při dalším spuštění', async ({ page, context }) => {
+    // Tohle je druhá půlka téhož problému: i když se blok uloží do telefonu,
+    // na notebooku ho nikdo neuvidí, dokud se appka na telefonu znovu
+    // neotevře. Pushovalo se totiž jen při startu.
+    await seed(context)
+
+    const pushes: number[] = []
+    await page.route('**/api/state', async (route) => {
+      const body = route.request().postDataJSON() as { records?: unknown[] }
+      pushes.push(body?.records?.length ?? 0)
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ rev: 1, applied: 0, skipped: 0, records: [] }),
+      })
+    })
+
+    await page.goto('/#/cviceni/1')
+    await page.waitForSelector('.dose-card')
+    const before = pushes.length
+
+    const total = Number((await page.locator('header .num').first().innerText()).split('/')[1])
+    for (let i = 0; i < total; i++) {
+      const skipRest = page.getByRole('button', { name: 'Přeskočit zbytek sérií' })
+      if (await skipRest.count()) await skipRest.click()
+      else await page.getByRole('button', { name: /Hotovo|Spustit/ }).first().click()
+      await page.waitForTimeout(120)
+    }
+    await expect(page.getByRole('heading', { name: 'Blok hotový' })).toBeVisible()
+
+    // Bez přechodu na jinou obrazovku a bez znovuotevření appky.
+    await expect.poll(() => pushes.length, { timeout: 8000 }).toBeGreaterThan(before)
   })
 
   test('odpočet u cviku na čas běží a pauza ho nevrátí na začátek', async ({ page, context }) => {
@@ -70,8 +151,9 @@ test.describe('cvičení', () => {
       return state.days[dayKey(0)].blocks.filter((b: any) => b.completedAt).length
     }).toBe(1)
 
-    // A odškrtnutí se dá vzít zpět.
-    await page.getByRole('button', { name: 'Označit blok Ráno jako hotový' }).click()
+    // A odškrtnutí se dá vzít zpět – na dvě klepnutí, viz test níž.
+    await page.getByRole('button', { name: 'Zrušit hotový blok Ráno' }).click()
+    await page.getByRole('button', { name: 'Opravdu zrušit hotový blok Ráno?' }).click()
     await expect.poll(async () => {
       const state = await readState(page)
       return state.days[dayKey(0)].blocks.filter((b: any) => b.completedAt).length
@@ -120,6 +202,27 @@ test.describe('cvičení', () => {
     await page.reload()
     await ready(page)
     await expect(page.getByRole('button', { name: 'Zapnout pípání' })).toBeVisible()
+  })
+
+  test('hotový blok nejde odznačit jedním chybným klepnutím', async ({ page, context }) => {
+    // Kolečko sedí hned vedle názvu bloku a je to přepínač, ne ukazatel.
+    // Jedno klepnutí vedle a odcvičený blok byl pryč i s dobou cvičení.
+    await seed(context, { days: { [dayKey(0)]: { blocks: [0] } } })
+    await page.goto('/#/cviceni')
+    await ready(page)
+
+    const check = page.getByRole('button', { name: /Zrušit hotový blok/ })
+    await check.click()
+    // První klepnutí se jen ptá – blok pořád platí.
+    await expect(page.getByRole('button', { name: /Opravdu zrušit hotový blok/ })).toBeVisible()
+    let state = await readState(page)
+    expect(state.days[dayKey(0)].blocks[0].completedAt).toBeTruthy()
+
+    // Druhé klepnutí to teprve provede.
+    await page.getByRole('button', { name: /Opravdu zrušit hotový blok/ }).click()
+    await page.waitForTimeout(400)
+    state = await readState(page)
+    expect(state.days[dayKey(0)].blocks[0].completedAt).toBeFalsy()
   })
 
   test('vyřazený cvik zmizí z plánu', async ({ page, context }) => {

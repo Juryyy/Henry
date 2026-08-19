@@ -65,7 +65,10 @@ const timer = useTimer()
 /* ------------------------------------------------------------------ */
 
 const soundOn = computed({
-  get: () => state.settings.exercise.sound,
+  // Chybějící hodnota znamená zapnuto. Migrace ji sice doplňuje, jenže
+  // sloučení nastavení z druhého zařízení ji může mezitím zase odstranit –
+  // a pípání by tiše zmizelo až do dalšího načtení appky.
+  get: () => state.settings.exercise.sound !== false,
   set: (value: boolean) => {
     state.settings.exercise.sound = value
     // Zapnutí je klepnutí, tedy chvíle, kdy prohlížeč zvuk povolí – a rovnou
@@ -206,9 +209,31 @@ function goBack(): void {
   if (index.value > 0) index.value--
 }
 
-function finish(): void {
-  cue('hotovo')
+/**
+ * Zapíše blok jako odcvičený.
+ *
+ * Volá se sama, jakmile člověk doklikne poslední cvik – ne až po klepnutí na
+ * závěrečné tlačítko. To, že se zapisuje až tlačítkem, věděla jenom appka:
+ * kdo zavřel křížkem (a ten je hned nahoře), přišel o celý blok a ráno mu
+ * v přehledu chyběl.
+ *
+ * Podmínka je jediná, a to poctivá: aspoň jeden cvik musí být opravdu
+ * odškrtnutý. Kdo blok jen proklikne přes „Tenhle vynechat", splněno nemá.
+ */
+function recordDone(): void {
+  if (doneCount.value === 0) return
+  if (isBlockDone(today.value, slot.value)) return
   completeBlock(today.value, slot.value, plan.value.id, (Date.now() - startedAt.value) / 1000)
+}
+
+watch(finished, (done) => {
+  if (!done) return
+  recordDone()
+  cue('hotovo')
+})
+
+function finish(): void {
+  recordDone()
   void router.push('/')
 }
 
@@ -369,7 +394,10 @@ const setLabel = computed(() => {
           Odcvičeno {{ doneCount }} z {{ plan.items.length }} cviků za
           {{ formatDuration((Date.now() - startedAt) / 1000) }}.
         </p>
-        <button class="btn btn-primary btn-lg btn-block" @click="finish">Zapsat a zavřít</button>
+        <p v-if="doneCount === 0" class="small c-warn">
+          Zapsaný není – neodškrtl se ani jeden cvik.
+        </p>
+        <button class="btn btn-primary btn-lg btn-block" @click="finish">Zpátky na dnešek</button>
         <button class="btn btn-ghost btn-block" @click="restart">Projít znovu</button>
       </div>
     </section>

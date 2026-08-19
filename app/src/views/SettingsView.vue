@@ -46,6 +46,12 @@ const s = computed(() => state.settings)
 
 /* Kroky ---------------------------------------------------------------- */
 
+/** Chybějící hodnota znamená zapnuto – viz komentář v přehrávači. */
+const soundOn = computed({
+  get: () => s.value.exercise.sound !== false,
+  set: (value: boolean) => (s.value.exercise.sound = value),
+})
+
 const avgDaily = computed(() => Math.round(s.value.steps.weeklyTarget / 7))
 const debtCapValue = computed(() => Math.round(avgDaily.value * s.value.steps.debtCapDays))
 
@@ -516,7 +522,7 @@ const confirmReset = ref(false)
           </div>
 
           <label class="toggle">
-            <input v-model="s.exercise.sound" type="checkbox" />
+            <input v-model="soundOn" type="checkbox" />
             <span>
               Pípání při cvičení
               <span class="tiny faint block">

@@ -515,6 +515,18 @@ const confirmReset = ref(false)
             </div>
           </div>
 
+          <label class="toggle">
+            <input v-model="s.exercise.sound" type="checkbox" />
+            <span>
+              Pípání při cvičení
+              <span class="tiny faint block">
+                Poslední tři vteřiny odpočtu ťuknou, konec série klesne, konec pauzy stoupne.
+                U notebooku je tak slyšet, kdy série skončila, bez koukání na displej. Přepnout
+                jde i přímo v přehrávači.
+              </span>
+            </span>
+          </label>
+
           <RouterLink to="/cviky" class="row-between nav-row">
             <span class="small">
               🏋 Které cviky chci

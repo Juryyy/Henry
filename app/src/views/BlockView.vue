@@ -7,6 +7,7 @@ import ExerciseFigure from '@/components/ExerciseFigure.vue'
 import { blockConfig, buildBlock, doseLabel } from '@/lib/plan'
 import { formatDuration } from '@/lib/date'
 import { buzz, useTimer } from '@/composables/useTimer'
+import { playCue, unlockSound } from '@/lib/sound'
 import {
   completeBlock,
   getBlockLog,
@@ -59,6 +60,40 @@ const finished = computed(() => index.value >= plan.value.items.length)
 
 const timer = useTimer()
 
+/* ------------------------------------------------------------------ */
+/*  Zvuk                                                               */
+/* ------------------------------------------------------------------ */
+
+const soundOn = computed({
+  get: () => state.settings.exercise.sound,
+  set: (value: boolean) => {
+    state.settings.exercise.sound = value
+    // Zapnutí je klepnutí, tedy chvíle, kdy prohlížeč zvuk povolí – a rovnou
+    // je slyšet, jak to zní. Bez ozvěny by člověk nevěděl, jestli to zabralo.
+    if (value) playCue('start', true)
+  },
+})
+
+function cue(kind: Parameters<typeof playCue>[0]): void {
+  playCue(kind, soundOn.value)
+}
+
+/**
+ * Poslední tři vteřiny odpočtu ťuknou.
+ *
+ * Hlídá se změna celé vteřiny, ne tik časovače: ten běží pětkrát za vteřinu,
+ * takže by z odpočtu byla drnčivá kulomet. A jen když odpočet opravdu běží –
+ * po pauze se `remaining` nemění a pípat není proč.
+ */
+watch(
+  () => timer.remaining.value,
+  (left, previous) => {
+    if (!timer.running.value) return
+    if (left === previous || left <= 0 || left > 3) return
+    cue('odpocet')
+  },
+)
+
 const figure = computed(() => (exercise.value ? getFigure(exercise.value.id) : null))
 const isTimed = computed(() => exercise.value?.mode !== 'reps')
 const sidesCount = computed(() => (exercise.value?.mode === 'time_per_side' ? 2 : 1))
@@ -85,6 +120,7 @@ function startWork(): void {
   if (!isTimed.value) return
   timer.start(item.value.dose, () => {
     buzz([120, 60, 120])
+    cue('konec')
     onWorkDone()
   })
 }
@@ -113,6 +149,8 @@ function onWorkDone(): void {
  * A po pauze se odpočet dopočítá, ne spustí znovu.
  */
 function primaryAction(): void {
+  // První klepnutí je jediná chvíle, kdy prohlížeč pustí zvuk ke slovu.
+  unlockSound()
   if (resting.value) {
     if (timer.remaining.value > 0) timer.resume()
     else startWork()
@@ -143,6 +181,7 @@ function startRest(): void {
   resting.value = true
   timer.start(rest, () => {
     buzz(80)
+    cue('start')
     startWork()
   })
 }
@@ -168,6 +207,7 @@ function goBack(): void {
 }
 
 function finish(): void {
+  cue('hotovo')
   completeBlock(today.value, slot.value, plan.value.id, (Date.now() - startedAt.value) / 1000)
   void router.push('/')
 }
@@ -232,7 +272,16 @@ const setLabel = computed(() => {
         <div class="strong">{{ plan.title }}</div>
         <div class="tiny faint">{{ plan.subtitle }}</div>
       </div>
-      <div class="tiny faint num" style="min-width: 42px; text-align: right">
+      <button
+        class="icon-btn"
+        :aria-pressed="soundOn"
+        :aria-label="soundOn ? 'Vypnout pípání' : 'Zapnout pípání'"
+        :title="soundOn ? 'Vypnout pípání' : 'Zapnout pípání'"
+        @click="soundOn = !soundOn"
+      >
+        {{ soundOn ? '🔊' : '🔇' }}
+      </button>
+      <div class="tiny faint num" style="min-width: 34px; text-align: right">
         {{ Math.min(index + 1, plan.items.length) }}/{{ plan.items.length }}
       </div>
     </header>

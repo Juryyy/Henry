@@ -278,6 +278,8 @@ export interface ExerciseSettings {
   graceDaysPerWeek: number
   /** Cviky, které uživatel vyřadil (bolest, nechce je). */
   excludedExerciseIds: string[]
+  /** Pípání v přehrávači: odpočet, konec série, konec pauzy, konec bloku. */
+  sound: boolean
 }
 
 export interface NotificationSettings {

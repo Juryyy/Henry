@@ -105,6 +105,23 @@ test.describe('cvičení', () => {
     await expect(page.getByText(/Vedle toho: ramena, tricepsy/)).toBeVisible()
   })
 
+  test('pípání jde v přehrávači vypnout a volba vydrží', async ({ page, context }) => {
+    // Zvuk se v testu ověřit nedá, ale přepínač a jeho uložení ano – a to
+    // je to, co uživatele štve, když nefunguje: vypne to a příště to řve zas.
+    await seed(context)
+    await page.goto('/#/cviceni/0')
+    await ready(page)
+
+    const off = page.getByRole('button', { name: 'Vypnout pípání' })
+    await expect(off).toBeVisible()
+    await off.click()
+    await expect(page.getByRole('button', { name: 'Zapnout pípání' })).toBeVisible()
+
+    await page.reload()
+    await ready(page)
+    await expect(page.getByRole('button', { name: 'Zapnout pípání' })).toBeVisible()
+  })
+
   test('vyřazený cvik zmizí z plánu', async ({ page, context }) => {
     await seed(context)
     await page.goto('/#/cviky/supine-hamstring-strap')

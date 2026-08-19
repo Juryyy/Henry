@@ -46,6 +46,9 @@ export function defaultSettings(): Settings {
       debtCapBlocks: 6,
       graceDaysPerWeek: 1,
       excludedExerciseIds: [],
+      // Zapnuté: kdo cvičí u notebooku, potřebuje vědět, že série skončila,
+      // aniž by koukal na displej. Vypnout to jde jedním klepnutím v přehrávači.
+      sound: true,
     },
     notifications: {
       enabled: false,
@@ -132,6 +135,11 @@ function migrate(raw: Record<string, unknown>): Record<string, unknown> {
     delete exercise.blocksPerDay
     delete exercise.minutesPerBlock
   }
+
+  // Pípání v přehrávači přibylo později. Chybějící hodnota by se sice
+  // vyhodnotila jako vypnuto, jenže výchozí stav je zapnuto – bez tohohle
+  // by ho stávající uživatel musel hledat v nastavení, aby ho vůbec slyšel.
+  if (exercise && typeof exercise.sound !== 'boolean') exercise.sound = true
 
   // Pořadí úkolů přibylo později. Bez něj by se seznam po synchronizaci
   // zamíchal, protože záznamy chodí ze serveru v libovolném pořadí –

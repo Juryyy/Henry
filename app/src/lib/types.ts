@@ -9,6 +9,42 @@ export type ExerciseCategory = 'core' | 'stretch' | 'mobility' | 'strength' | 'c
 /** Jak se cvik dávkuje – ovlivňuje UI přehrávače i zápis do logu. */
 export type ExerciseMode = 'reps' | 'time' | 'time_per_side'
 
+/**
+ * Svalové skupiny, které umí ukázat mapa těla.
+ *
+ * Není to anatomický atlas – je to tolik skupin, kolik jich jde na obrázku
+ * velikosti dlaně od sebe rozeznat. Hlubší věci (multifidy, rotátory kyčle)
+ * spadají pod tu skupinu, pod kterou leží, a přesnost zůstává v textu u cviku.
+ *
+ * `srdce` sval není. Je tam proto, že u kardia je poctivější říct „tohle je
+ * na oběh" než vybarvit náhodné svaly na nohou.
+ */
+export type MuscleId =
+  | 'ramena'
+  | 'prsa'
+  | 'biceps'
+  | 'triceps'
+  | 'brisni'
+  | 'sikme'
+  | 'hluboky-stred'
+  | 'ohybace-kycle'
+  | 'kvadriceps'
+  | 'adduktory'
+  | 'mezilopatkove'
+  | 'siroky-zadovy'
+  | 'vzprimovace'
+  | 'patere'
+  | 'hyzde'
+  | 'hamstringy'
+  | 'lytka'
+  | 'srdce'
+
+/** Co cvik zatěžuje. `primary` je to, kvůli čemu se dělá. */
+export interface Muscles {
+  primary: MuscleId[]
+  secondary: MuscleId[]
+}
+
 export interface Exercise {
   id: string
   name: string
@@ -32,6 +68,8 @@ export interface Exercise {
   warning?: string
   /** Značky pro sestavování plánu: 'hamstrings', 'hips', 'anti-extension', … */
   tags: string[]
+  /** Které svaly to zatěžuje – kreslí se z toho mapa těla u cviku. */
+  muscles: Muscles
 }
 
 /* ------------------------------------------------------------------ */

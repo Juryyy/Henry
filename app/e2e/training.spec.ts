@@ -93,6 +93,18 @@ test.describe('cvičení', () => {
     expect(await page.locator('.thumb svg').count()).toBeGreaterThan(10)
   })
 
+  test('u cviku je vidět, co zatěžuje', async ({ page, context }) => {
+    await seed(context)
+    await page.goto('/#/cviky/dumbbell-bench-press')
+    await ready(page)
+
+    // Mapa těla nese popis pro čtečku – barva na obrázku je informace navíc,
+    // ne jediná cesta, jak se to dozvědět.
+    await expect(page.getByRole('img', { name: /Zatěžuje hlavně: prsní svaly/ })).toBeVisible()
+    // A totéž je pod obrázkem napsané.
+    await expect(page.getByText(/Vedle toho: ramena, tricepsy/)).toBeVisible()
+  })
+
   test('vyřazený cvik zmizí z plánu', async ({ page, context }) => {
     await seed(context)
     await page.goto('/#/cviky/supine-hamstring-strap')

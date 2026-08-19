@@ -1,4 +1,4 @@
-import type { Exercise } from '@/lib/types'
+import type { Exercise, MuscleId } from '@/lib/types'
 
 /**
  * Katalog cviků.
@@ -54,6 +54,10 @@ export const EXERCISES: Exercise[] = [
       'jednostranne',
       'vleze',
     ],
+    muscles: {
+      primary: ['sikme'],
+      secondary: ['hluboky-stred', 'ramena'],
+    },
   },
   {
     id: 'branicni-dychani',
@@ -87,6 +91,10 @@ export const EXERCISES: Exercise[] = [
       'vleze',
       'bez-pomucek',
     ],
+    muscles: {
+      primary: ['hluboky-stred'],
+      secondary: [],
+    },
   },
   {
     id: 'mcgillova-zkracovacka',
@@ -121,6 +129,10 @@ export const EXERCISES: Exercise[] = [
       'vleze',
       'bez-pomucek',
     ],
+    muscles: {
+      primary: ['brisni'],
+      secondary: ['hluboky-stred'],
+    },
   },
   {
     id: 'mrtvy-brouk',
@@ -154,6 +166,10 @@ export const EXERCISES: Exercise[] = [
       'vleze',
       'bez-pomucek',
     ],
+    muscles: {
+      primary: ['brisni', 'hluboky-stred'],
+      secondary: ['sikme', 'ohybace-kycle'],
+    },
   },
   {
     id: 'prkno-na-kolenou',
@@ -187,6 +203,10 @@ export const EXERCISES: Exercise[] = [
       'ramena',
       'vkleku',
     ],
+    muscles: {
+      primary: ['brisni', 'hluboky-stred'],
+      secondary: ['ramena', 'kvadriceps'],
+    },
   },
   {
     id: 'ptaci-pes',
@@ -220,6 +240,10 @@ export const EXERCISES: Exercise[] = [
       'hyzde',
       'vkleku',
     ],
+    muscles: {
+      primary: ['vzprimovace', 'hyzde'],
+      secondary: ['sikme', 'ramena'],
+    },
   },
   {
     id: 'bocne-prkno',
@@ -253,6 +277,10 @@ export const EXERCISES: Exercise[] = [
       'jednostranne',
       'vleze',
     ],
+    muscles: {
+      primary: ['sikme'],
+      secondary: ['hluboky-stred', 'ramena', 'hyzde'],
+    },
   },
   {
     id: 'lodicka-na-brise',
@@ -285,6 +313,10 @@ export const EXERCISES: Exercise[] = [
       'bederni-patere',
       'vleze',
     ],
+    muscles: {
+      primary: ['vzprimovace'],
+      secondary: ['hyzde', 'mezilopatkove', 'hamstringy'],
+    },
   },
   {
     id: 'prkno-na-predlokti',
@@ -317,6 +349,10 @@ export const EXERCISES: Exercise[] = [
       'bez-pomucek',
       'vleze',
     ],
+    muscles: {
+      primary: ['brisni', 'hluboky-stred'],
+      secondary: ['ramena', 'hyzde', 'kvadriceps'],
+    },
   },
   {
     id: 'sedy-lehy',
@@ -350,6 +386,10 @@ export const EXERCISES: Exercise[] = [
       'kycle',
       'vleze',
     ],
+    muscles: {
+      primary: ['brisni'],
+      secondary: ['ohybace-kycle'],
+    },
   },
   {
     id: 'zkracovacky',
@@ -382,6 +422,10 @@ export const EXERCISES: Exercise[] = [
       'vleze',
       'bez-pomucek',
     ],
+    muscles: {
+      primary: ['brisni'],
+      secondary: ['sikme'],
+    },
   },
   {
     id: 'bocne-prkno-s-rotaci',
@@ -415,6 +459,10 @@ export const EXERCISES: Exercise[] = [
       'hrudni-patere',
       'jednostranne',
     ],
+    muscles: {
+      primary: ['sikme'],
+      secondary: ['ramena', 'patere'],
+    },
   },
   {
     id: 'hollow-hold',
@@ -448,6 +496,10 @@ export const EXERCISES: Exercise[] = [
       'flexe-patere',
       'vleze',
     ],
+    muscles: {
+      primary: ['brisni', 'hluboky-stred'],
+      secondary: ['ohybace-kycle'],
+    },
   },
   {
     id: 'prkno-s-dotykem-ramen',
@@ -481,6 +533,10 @@ export const EXERCISES: Exercise[] = [
       'ramena',
       'vleze',
     ],
+    muscles: {
+      primary: ['sikme', 'ramena'],
+      secondary: ['brisni', 'hluboky-stred'],
+    },
   },
   {
     id: 'goblet-squat',
@@ -513,6 +569,10 @@ export const EXERCISES: Exercise[] = [
       'kycle',
       'stoj',
     ],
+    muscles: {
+      primary: ['kvadriceps', 'hyzde'],
+      secondary: ['hluboky-stred', 'adduktory'],
+    },
   },
   {
     id: 'hyzdovy-most',
@@ -546,6 +606,10 @@ export const EXERCISES: Exercise[] = [
       'vleze',
       'bez-pomucek',
     ],
+    muscles: {
+      primary: ['hyzde'],
+      secondary: ['hamstringy', 'vzprimovace'],
+    },
   },
   {
     id: 'seated-cable-row',
@@ -578,6 +642,10 @@ export const EXERCISES: Exercise[] = [
       'extenzory-zad',
       'hrudni-patere',
     ],
+    muscles: {
+      primary: ['siroky-zadovy', 'mezilopatkove'],
+      secondary: ['biceps', 'ramena'],
+    },
   },
   {
     id: 'dumbbell-bench-press',
@@ -609,6 +677,10 @@ export const EXERCISES: Exercise[] = [
       'ramena',
       'vleze',
     ],
+    muscles: {
+      primary: ['prsa'],
+      secondary: ['ramena', 'triceps'],
+    },
   },
   {
     id: 'dumbbell-romanian-deadlift',
@@ -642,6 +714,10 @@ export const EXERCISES: Exercise[] = [
       'extenzory-zad',
       'stoj',
     ],
+    muscles: {
+      primary: ['hamstringy', 'hyzde'],
+      secondary: ['vzprimovace', 'siroky-zadovy'],
+    },
   },
   {
     id: 'hyzdovy-most-jednonoz',
@@ -675,6 +751,10 @@ export const EXERCISES: Exercise[] = [
       'anti-rotace',
       'vleze',
     ],
+    muscles: {
+      primary: ['hyzde'],
+      secondary: ['hamstringy', 'sikme'],
+    },
   },
   {
     id: 'hip-hinge-dowel',
@@ -708,6 +788,10 @@ export const EXERCISES: Exercise[] = [
       'stoj',
       'rozehrati',
     ],
+    muscles: {
+      primary: ['hamstringy'],
+      secondary: ['vzprimovace', 'hyzde'],
+    },
   },
   {
     id: 'kocka-velbloud',
@@ -740,6 +824,10 @@ export const EXERCISES: Exercise[] = [
       'hrudni-patere',
       'vkleku',
     ],
+    muscles: {
+      primary: ['patere'],
+      secondary: ['vzprimovace', 'brisni'],
+    },
   },
   {
     id: 'sciatic-nerve-glide',
@@ -772,6 +860,10 @@ export const EXERCISES: Exercise[] = [
       'hamstringy',
       'potreba-zidle',
     ],
+    muscles: {
+      primary: ['hamstringy'],
+      secondary: ['lytka'],
+    },
   },
   {
     id: 'ninety-ninety-hip',
@@ -805,6 +897,10 @@ export const EXERCISES: Exercise[] = [
       'adduktory',
       'rozehrati',
     ],
+    muscles: {
+      primary: ['hyzde'],
+      secondary: ['adduktory'],
+    },
   },
   {
     id: 'thread-the-needle',
@@ -838,6 +934,10 @@ export const EXERCISES: Exercise[] = [
       'jednostranne',
       'vkleku',
     ],
+    muscles: {
+      primary: ['patere', 'mezilopatkove'],
+      secondary: ['ramena', 'siroky-zadovy'],
+    },
   },
   {
     id: 'cossack-adductor-rock',
@@ -871,6 +971,10 @@ export const EXERCISES: Exercise[] = [
       'jednostranne',
       'stoj',
     ],
+    muscles: {
+      primary: ['adduktory'],
+      secondary: ['hyzde', 'kvadriceps'],
+    },
   },
   {
     id: 'jefferson-curl-bodyweight',
@@ -905,6 +1009,10 @@ export const EXERCISES: Exercise[] = [
       'hamstringy',
       'stoj',
     ],
+    muscles: {
+      primary: ['patere', 'hamstringy'],
+      secondary: ['vzprimovace'],
+    },
   },
   {
     id: 'childs-pose',
@@ -938,6 +1046,10 @@ export const EXERCISES: Exercise[] = [
       'hyzde',
       'vkleku',
     ],
+    muscles: {
+      primary: ['vzprimovace', 'siroky-zadovy'],
+      secondary: ['hyzde'],
+    },
   },
   {
     id: 'kneeling-hip-flexor-stretch',
@@ -971,6 +1083,10 @@ export const EXERCISES: Exercise[] = [
       'jednostranne',
       'bez-pomucek',
     ],
+    muscles: {
+      primary: ['ohybace-kycle'],
+      secondary: ['kvadriceps'],
+    },
   },
   {
     id: 'seated-butterfly-adductor',
@@ -1003,6 +1119,10 @@ export const EXERCISES: Exercise[] = [
       'kycle',
       'bez-pomucek',
     ],
+    muscles: {
+      primary: ['adduktory'],
+      secondary: ['hyzde'],
+    },
   },
   {
     id: 'standing-forward-fold',
@@ -1036,6 +1156,10 @@ export const EXERCISES: Exercise[] = [
       'stoj',
       'flexe-patere',
     ],
+    muscles: {
+      primary: ['hamstringy'],
+      secondary: ['lytka', 'vzprimovace', 'hyzde'],
+    },
   },
   {
     id: 'supine-figure-four',
@@ -1069,6 +1193,10 @@ export const EXERCISES: Exercise[] = [
       'vleze',
       'bez-pomucek',
     ],
+    muscles: {
+      primary: ['hyzde'],
+      secondary: [],
+    },
   },
   {
     id: 'supine-hamstring-strap',
@@ -1102,6 +1230,10 @@ export const EXERCISES: Exercise[] = [
       'vleze',
       'potreba-popruh',
     ],
+    muscles: {
+      primary: ['hamstringy'],
+      secondary: ['lytka'],
+    },
   },
   {
     id: 'wall-calf-stretch',
@@ -1135,6 +1267,10 @@ export const EXERCISES: Exercise[] = [
       'potreba-zed',
       'jednostranne',
     ],
+    muscles: {
+      primary: ['lytka'],
+      secondary: [],
+    },
   },
   {
     id: 'elevated-hamstring-hinge',
@@ -1168,6 +1304,10 @@ export const EXERCISES: Exercise[] = [
       'stoj',
       'jednostranne',
     ],
+    muscles: {
+      primary: ['hamstringy'],
+      secondary: ['hyzde'],
+    },
   },
   {
     id: 'pnf-hamstring-contract-relax',
@@ -1201,6 +1341,10 @@ export const EXERCISES: Exercise[] = [
       'vleze',
       'potreba-popruh',
     ],
+    muscles: {
+      primary: ['hamstringy'],
+      secondary: ['lytka'],
+    },
   },
   {
     id: 'seated-forward-fold',
@@ -1233,6 +1377,10 @@ export const EXERCISES: Exercise[] = [
       'lytka',
       'extenzory-zad',
     ],
+    muscles: {
+      primary: ['hamstringy', 'vzprimovace'],
+      secondary: ['lytka'],
+    },
   },
   {
     id: 'couch-stretch',
@@ -1266,6 +1414,10 @@ export const EXERCISES: Exercise[] = [
       'potreba-zed',
       'jednostranne',
     ],
+    muscles: {
+      primary: ['ohybace-kycle', 'kvadriceps'],
+      secondary: [],
+    },
   },
   {
     id: 'brisk-walk',
@@ -1298,6 +1450,10 @@ export const EXERCISES: Exercise[] = [
       'stoj',
       'bez-pomucek',
     ],
+    muscles: {
+      primary: ['srdce'],
+      secondary: ['hyzde', 'kvadriceps', 'hamstringy', 'lytka'],
+    },
   },
   {
     id: 'marching-in-place',
@@ -1331,6 +1487,10 @@ export const EXERCISES: Exercise[] = [
       'stoj',
       'rozehrati',
     ],
+    muscles: {
+      primary: ['srdce', 'ohybace-kycle'],
+      secondary: ['lytka', 'hluboky-stred'],
+    },
   },
   {
     id: 'step-jacks-low-impact',
@@ -1364,6 +1524,10 @@ export const EXERCISES: Exercise[] = [
       'adduktory',
       'stoj',
     ],
+    muscles: {
+      primary: ['srdce'],
+      secondary: ['ramena', 'adduktory', 'hyzde'],
+    },
   },
   {
     id: 'burpee-elevated-regression',
@@ -1397,6 +1561,10 @@ export const EXERCISES: Exercise[] = [
       'hyzde',
       'stoj',
     ],
+    muscles: {
+      primary: ['srdce', 'prsa'],
+      secondary: ['ramena', 'triceps', 'kvadriceps'],
+    },
   },
   {
     id: 'jumping-jacks',
@@ -1430,6 +1598,10 @@ export const EXERCISES: Exercise[] = [
       'ramena',
       'stoj',
     ],
+    muscles: {
+      primary: ['srdce'],
+      secondary: ['ramena', 'adduktory', 'lytka'],
+    },
   },
   {
     id: 'shadow-boxing',
@@ -1463,6 +1635,10 @@ export const EXERCISES: Exercise[] = [
       'hrudni-patere',
       'stoj',
     ],
+    muscles: {
+      primary: ['srdce', 'ramena'],
+      secondary: ['sikme', 'triceps', 'biceps'],
+    },
   },
   {
     id: 'stair-climbing',
@@ -1496,6 +1672,10 @@ export const EXERCISES: Exercise[] = [
       'lytka',
       'stoj',
     ],
+    muscles: {
+      primary: ['srdce', 'hyzde'],
+      secondary: ['kvadriceps', 'lytka'],
+    },
   },
   {
     id: 'step-ups',
@@ -1529,6 +1709,10 @@ export const EXERCISES: Exercise[] = [
       'jednostranne',
       'stoj',
     ],
+    muscles: {
+      primary: ['srdce', 'hyzde', 'kvadriceps'],
+      secondary: ['lytka', 'sikme'],
+    },
   },
 ]
 
@@ -1561,6 +1745,31 @@ export const CATEGORY_TONE: Record<Exercise['category'], string> = {
   mobility: 'var(--fig-rozhybani)',
   stretch: 'var(--fig-protazeni)',
   cardio: 'var(--fig-kardio)',
+}
+
+/**
+ * Jak se svalové skupiny jmenují česky. Pod obrázkem se vypisují slovy –
+ * mapa těla je nápověda navíc, ne jediný způsob, jak se to dozvědět.
+ */
+export const MUSCLE_LABELS: Record<MuscleId, string> = {
+  ramena: 'ramena',
+  prsa: 'prsní svaly',
+  biceps: 'bicepsy',
+  triceps: 'tricepsy',
+  brisni: 'přímý břišní sval',
+  sikme: 'šikmé břišní svaly',
+  'hluboky-stred': 'hluboký střed těla',
+  'ohybace-kycle': 'ohýbače kyčle',
+  kvadriceps: 'přední strana stehen',
+  adduktory: 'vnitřní strana stehen',
+  mezilopatkove: 'mezilopatkové svaly',
+  'siroky-zadovy': 'široký sval zádový',
+  vzprimovace: 'vzpřimovače zad',
+  patere: 'pohyblivost páteře',
+  hyzde: 'hýždě',
+  hamstringy: 'zadní strana stehen',
+  lytka: 'lýtka',
+  srdce: 'srdce a oběh',
 }
 
 export const LEVEL_LABELS: Record<1 | 2 | 3, string> = {

@@ -5,6 +5,7 @@ import { CATEGORY_LABELS, CATEGORY_TONE, LEVEL_LABELS, TAG_LABELS, getExercise }
 import { getFigure } from '@/data/figures'
 import { state } from '@/stores/app'
 import ExerciseFigure from '@/components/ExerciseFigure.vue'
+import MuscleMap from '@/components/MuscleMap.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -82,6 +83,11 @@ const doseText = computed(() => {
             · šedá polovina těla je ta vzdálenější</template
           >
         </p>
+      </section>
+
+      <section class="card">
+        <div class="card-title">Co to zatěžuje</div>
+        <MuscleMap :muscles="exercise.muscles" :category="exercise.category" />
       </section>
 
       <section class="card">

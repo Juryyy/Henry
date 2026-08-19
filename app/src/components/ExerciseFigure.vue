@@ -164,16 +164,14 @@ const strapEnds = computed<[Point, Point] | null>(() => {
     <!-- Vzdálená ruka a noha jsou šedé, ne jen průhlednější: takhle je vidět,
          která polovina těla je blíž k divákovi, a u střídavých cviků (pochod,
          mrtvý brouk) se dá sledovat, co dělá která strana. -->
-    <polyline
-      v-if="pose.elbowFar && pose.handFar"
-      class="limb far"
-      :points="line([pose.neck, pose.elbowFar, pose.handFar])"
-    />
-    <polyline
-      v-if="pose.kneeFar && pose.ankleFar && pose.toeFar"
-      class="limb far"
-      :points="line([pose.hip, pose.kneeFar, pose.ankleFar, pose.toeFar])"
-    />
+    <template v-if="pose.elbowFar && pose.handFar">
+      <polyline class="limb far paze" :points="line([pose.neck, pose.elbowFar])" />
+      <polyline class="limb far predlokti" :points="line([pose.elbowFar, pose.handFar])" />
+    </template>
+    <template v-if="pose.kneeFar && pose.ankleFar && pose.toeFar">
+      <polyline class="limb far stehno" :points="line([pose.hip, pose.kneeFar])" />
+      <polyline class="limb far lytko" :points="line([pose.kneeFar, pose.ankleFar, pose.toeFar])" />
+    </template>
 
     <!-- Trup. Kreslí se jako první, takže páteř i končetiny zůstanou nad ním. -->
     <path v-if="torso" class="belly" :d="torso" />
@@ -183,8 +181,13 @@ const strapEnds = computed<[Point, Point] | null>(() => {
     <!-- Páteř. Nejsilnější čára obrázku – u předklonu i kočičího hřbetu je
          tak vidět, kde jsou záda a kterým směrem se ohýbají. -->
     <path class="limb spine" :d="spine" />
-    <polyline class="limb" :points="line([pose.hip, pose.knee, pose.ankle, pose.toe])" />
-    <polyline class="limb" :points="line([pose.neck, pose.elbow, pose.hand])" />
+    <!-- Každá končetina ve dvou dílech, aby mohla být blíž k tělu silnější:
+         stehno je tlustší než lýtko a paže než předloktí. Jedna čára stejné
+         tloušťky od kyčle po špičku vypadá jako drát, ne jako noha. -->
+    <polyline class="limb stehno" :points="line([pose.hip, pose.knee])" />
+    <polyline class="limb lytko" :points="line([pose.knee, pose.ankle, pose.toe])" />
+    <polyline class="limb paze" :points="line([pose.neck, pose.elbow])" />
+    <polyline class="limb predlokti" :points="line([pose.elbow, pose.hand])" />
 
     <!-- Dlaň. Konec čáry se ztrácí, tečka ne – a u cviků, kde na poloze rukou
          záleží (provlékání, dotyk ramen), je to ta informace, kterou hledáš. -->
@@ -244,6 +247,13 @@ const strapEnds = computed<[Point, Point] | null>(() => {
   stroke-linejoin: round;
 }
 
+/* Zúžení směrem od těla. Kulaté konce dva díly spojí, takže na loketu
+   ani na koleni není vidět schod. */
+.stehno { stroke-width: 4.4; }
+.lytko { stroke-width: 3.2; }
+.paze { stroke-width: 3.4; }
+.predlokti { stroke-width: 2.6; }
+
 /* Páteř je nejsilnější čára obrázku – ta se má číst první. */
 .spine {
   stroke-width: 4;
@@ -253,10 +263,13 @@ const strapEnds = computed<[Point, Point] | null>(() => {
    a vypadá jako stín pod postavou, ne jako tělo. Že jde o břišní stranu,
    je poznat z tvaru – vyboulená je vždycky ta, kam míří obličej. */
 .belly {
-  fill: var(--fig, var(--accent));
-  /* Obrys stejnou barvou jen kvůli zakulacení rohů – ostrý roh u ramene
+  /* O chlup ustoupená barva, ne plná. Paže, která se při chůzi houpe dopředu,
+     jinak zmizí v trupu – obojí je jedna plocha téhož odstínu. Takhle je
+     ruka pořád vidět a trup zůstane tělem, ne siluetou navíc. */
+  fill: color-mix(in srgb, var(--fig, var(--accent)) 76%, var(--bg-soft));
+  /* Obrys tou samou barvou jen kvůli zakulacení rohů – ostrý roh u ramene
      a u pánve vypadá jako bedna, ne jako trup. */
-  stroke: var(--fig, var(--accent));
+  stroke: color-mix(in srgb, var(--fig, var(--accent)) 76%, var(--bg-soft));
   stroke-width: 2.2;
   stroke-linejoin: round;
 }
@@ -279,8 +292,13 @@ const strapEnds = computed<[Point, Point] | null>(() => {
 .far {
   stroke: var(--text-faint);
   opacity: 0.75;
-  stroke-width: 2.4;
 }
+
+/* Vzdálená polovina je o chlup tenčí – je dál, tak má být i menší. */
+.far.stehno { stroke-width: 3.8; }
+.far.lytko { stroke-width: 2.8; }
+.far.paze { stroke-width: 3; }
+.far.predlokti { stroke-width: 2.3; }
 
 .head {
   fill: var(--fig, var(--accent));

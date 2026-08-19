@@ -3,9 +3,10 @@ import { EXERCISES } from '@/data/exercises'
 import { FIGURES, getFigure } from '@/data/figures'
 import {
   clockListenerCount,
-  faceLine,
+  eyes,
   fitView,
   GROUND_Y,
+  EYE_R,
   HEAD_R,
   limbPath,
   pingPong,
@@ -126,42 +127,39 @@ describe('geometrie pózy', () => {
 describe('směr pohledu', () => {
   const dist = (a: Point, b: Point): number => Math.hypot(a[0] - b[0], a[1] - b[1])
 
-  it('nos čouhá ven z hlavy, ne dovnitř', () => {
-    // Kdyby byl kratší než poloměr hlavy, schoval by se pod ni a obrázek
-    // by o směru pohledu neřekl nic. Přesně tak to jednou vypadalo.
-    for (const [id, figure] of Object.entries(FIGURES)) {
-      for (const [index, pose] of figure.frames.entries()) {
-        const line = faceLine(pose)
-        if (!line) continue
-        expect(dist(pose.head, line[1]), `${id} póza ${index}`).toBeGreaterThan(HEAD_R + 2)
-      }
-    }
-  })
-
-  it('nos se nezaboří do země', () => {
-    // V lehu na břiše míří obličej dolů, ale hlava leží pár bodů nad zemí –
-    // kolmo dolů by nos prošel podlahou. Hlídá se to i uprostřed přechodu,
-    // protože se směr pohledu mezi pózami plynule otáčí.
+  it('oko zůstane uvnitř hlavy', () => {
+    // Dřív tu byl nos, který z hlavy čouhal ven – u lehu na břiše mířil pod
+    // podlahu a u ležících poloh z něj byl zobák. Oko se dovnitř vejít musí,
+    // jinak jsme si ten problém jen přestěhovali.
     for (const [id, figure] of Object.entries(FIGURES)) {
       for (let phase = 0; phase < 1; phase += 0.02) {
-        const tip = faceLine(poseAt(figure.frames, phase))?.[1]
-        if (!tip) continue
-        expect(tip[1], `${id} fáze ${phase.toFixed(2)}`).toBeLessThanOrEqual(GROUND_Y)
+        const pose = poseAt(figure.frames, phase)
+        for (const eye of eyes(pose)) {
+          expect(dist(pose.head, eye) + EYE_R, `${id} fáze ${phase.toFixed(2)}`).toBeLessThan(HEAD_R)
+        }
       }
     }
   })
 
-  it('pohled na diváka nos nekreslí', () => {
-    const front = { ...FIGURES['jumping-jacks']!.frames[0]!, look: [0, 0] as Point }
-    expect(faceLine(front)).toBeNull()
+  it('z profilu je oko jedno, čelem k divákovi dvě', () => {
+    expect(eyes(FIGURES['brisk-walk']!.frames[0]!)).toHaveLength(1)
+    expect(eyes(FIGURES['jumping-jacks']!.frames[0]!)).toHaveLength(2)
+  })
+
+  it('oko je na té straně hlavy, kam se postavička dívá', () => {
+    const pose = FIGURES['brisk-walk']!.frames[0]!
+    const eye = eyes(pose)[0]!
+    const look = pose.look!
+    // Průmět posunu oka do směru pohledu musí být kladný.
+    expect((eye[0] - pose.head[0]) * look[0] + (eye[1] - pose.head[1]) * look[1]).toBeGreaterThan(0)
   })
 
   it('bez zadaného směru se pohled odvodí z krku', () => {
     const pose: Pose = { ...FIGURES['prkno-na-predlokti']!.frames[0]!, look: undefined }
-    const line = faceLine(pose)
-    expect(line).not.toBeNull()
-    // Prodloužení krku: z krku přes hlavu ven.
-    expect(dist(pose.neck, line![1])).toBeGreaterThan(dist(pose.neck, pose.head))
+    const eye = eyes(pose)[0]
+    expect(eye).toBeDefined()
+    // Prodloužení krku: oko je na té straně hlavy, která je dál od krku.
+    expect(dist(pose.neck, eye!)).toBeGreaterThan(dist(pose.neck, pose.head))
   })
 })
 
@@ -334,7 +332,7 @@ describe('objem trupu', () => {
     }
   })
 
-  it('výřez počítá i s trupem a nosem, nic se neořízne', () => {
+  it('výřez počítá i s trupem, nic se neořízne', () => {
     for (const [id, figure] of Object.entries(FIGURES)) {
       const [x, y, w, h] = fitView(figure.frames)
       for (const [index, pose] of figure.frames.entries()) {
@@ -345,8 +343,6 @@ describe('objem trupu', () => {
             corners.push([joint[0] + edges.normal[0] * depth, joint[1] + edges.normal[1] * depth])
           }
         }
-        const nose = faceLine(pose)?.[1]
-        if (nose) corners.push(nose)
         for (const [cx, cy] of corners) {
           expect(cx, `${id} póza ${index} x`).toBeGreaterThanOrEqual(x)
           expect(cx, `${id} póza ${index} x`).toBeLessThanOrEqual(x + w)

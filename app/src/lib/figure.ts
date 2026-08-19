@@ -116,8 +116,8 @@ const INTERPOLATED = [...OPTIONAL_POINTS, 'look'] as const
 
 /** Poloměr hlavy. Kreslí se s ním, a počítá se s ním i výřez. */
 export const HEAD_R = 4.7
-/** Jak daleko nos vyčnívá **za okraj** hlavy. */
-const NOSE = 3.3
+/** Poloměr oka. */
+export const EYE_R = 1.15
 /** Tloušťka trupu z profilu – od zad k břichu. */
 export const TORSO_DEPTH = 11
 /** Šířka trupu zepředu, od ramene k rameni. Člověk je z profilu užší. */
@@ -139,19 +139,25 @@ function unit(v: Point): Point | null {
 }
 
 /**
- * Nos jako úsečka od okraje hlavy ven, nebo `null` u pohledu na diváka –
- * tam by z nosu byla jen skvrna uprostřed obličeje.
+ * Kde má postavička oči.
  *
- * Kreslí se od okraje, ne ze středu: čárka přes celou hlavu vypadá jako
- * škrtnutí, kdežto krátký hrot z obrysu je poznat i v seznamu na 60 pixelech.
+ * Z profilu jedno oko posunuté dopředu, čelem k divákovi dvě vedle sebe.
+ *
+ * Dřív tu místo očí býval nos – klín, který z hlavy čouhal ven. Byl vidět
+ * líp, jenže u ležících poloh z něj byl zobák a z postavičky kachna. Oko
+ * uvnitř hlavy řekne směr pohledu stejně dobře a nikam netrčí.
  */
-export function faceLine(pose: Pose): [Point, Point] | null {
-  const dir = unit(lookVector(pose))
-  if (!dir) return null
+export function eyes(pose: Pose): Point[] {
   const [x, y] = pose.head
+  const dir = unit(lookVector(pose))
+  if (dir) return [[x + dir[0] * HEAD_R * 0.44, y + dir[1] * HEAD_R * 0.44]]
+  // Čelem k divákovi: dvě oči kolmo na páteř, ať je poznat, že kouká sem.
+  const spine = unit([pose.hip[0] - pose.neck[0], pose.hip[1] - pose.neck[1]])
+  if (!spine) return []
+  const off = HEAD_R * 0.42
   return [
-    [x + dir[0] * (HEAD_R - 1), y + dir[1] * (HEAD_R - 1)],
-    [x + dir[0] * (HEAD_R + NOSE), y + dir[1] * (HEAD_R + NOSE)],
+    [x - spine[1] * off, y + spine[0] * off],
+    [x + spine[1] * off, y - spine[0] * off],
   ]
 }
 
@@ -223,14 +229,6 @@ export function torsoJoints(pose: Pose): { shoulder: Point; hip: Point } {
   const spine = unit([pose.hip[0] - pose.neck[0], pose.hip[1] - pose.neck[1]])
   const drop: Point = spine ? [pose.neck[0] + spine[0] * 2.6, pose.neck[1] + spine[1] * 2.6] : pose.neck
   return { shoulder: at(0.32, drop), hip: at(0.45, pose.hip) }
-}
-
-/**
- * Konec nosu, nebo `null` u pohledu na diváka. Používá se hlavně na rámování –
- * kdyby se nos počítal jen při kreslení, u zakloněné hlavy by přečuhoval ven.
- */
-export function faceTarget(pose: Pose): Point | null {
-  return faceLine(pose)?.[1] ?? null
 }
 
 /* ------------------------------------------------------------------ */
@@ -440,8 +438,6 @@ export function fitView(frames: Pose[]): [number, number, number, number] {
       const point = pose[joint]
       if (point) include(point[0], point[1])
     }
-    const face = faceTarget(pose)
-    if (face) include(face[0], face[1])
     // Trup je odsazený od páteře, takže leze z obalu ven – typicky u lehu
     // na zádech, kde míří vzhůru.
     const edges = torsoEdges(pose)

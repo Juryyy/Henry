@@ -3,7 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   BODY,
   blobPath,
-  faceLine,
+  eyes,
+  EYE_R,
   fitView,
   GROUND_Y,
   HEAD_R,
@@ -146,23 +147,16 @@ const legFar = computed(() => {
     : ''
 })
 
+/** Hlava. Prostě kolečko – směr pohledu nese oko uvnitř, ne tvar. */
+const head = computed(() => (pose.value ? blobPath(pose.value.head, HEAD_R) : ''))
+
 /**
- * Krk, hlava a nos jako jedna cesta.
+ * Oči jako důlky v barvě podkladu, stejně jako rýha zad.
  *
- * Jedna schválně: obrys se pak kreslí kolem obrysu celé hlavy, ne kolem
- * každého kousku zvlášť. Nos s vlastním obrysem vypadá jako nalepený zobák,
- * ne jako profil obličeje.
+ * Z profilu jedno, čelem k divákovi dvě. Je to jediná věc na postavičce,
+ * která říká, kterým směrem se dívá – a přitom z hlavy nic netrčí.
  */
-const head = computed(() => {
-  const p = pose.value
-  if (!p) return ''
-  const parts = [blobPath(p.head, HEAD_R)]
-  const face = faceLine(p)
-  // Nos je krátký klín od středu hlavy ven. Delší z něj dělá zobák –
-  // u ležících pozic je hlava malá a všechno navíc je hned vidět.
-  if (face) parts.push(limbPath([p.head, face[1]], [HEAD_R * 0.78, 1.5]))
-  return parts.join(' ')
-})
+const eyeDots = computed(() => (pose.value ? eyes(pose.value) : []))
 
 /**
  * Krk zvlášť, a kreslí se **pod** trupem.
@@ -305,6 +299,7 @@ const strapEnds = computed<[Point, Point] | null>(() => {
     <path class="part" :d="leg" />
     <path class="part" :d="arm" />
     <path class="part" :d="head" />
+    <circle v-for="(eye, i) in eyeDots" :key="i" class="eye" :cx="eye[0]" :cy="eye[1]" :r="EYE_R" />
 
     <line
       v-if="strapEnds"
@@ -362,6 +357,11 @@ const strapEnds = computed<[Point, Point] | null>(() => {
 .far {
   fill: var(--text-faint);
   opacity: 0.85;
+}
+
+.eye {
+  fill: var(--fig-bg, var(--bg-soft));
+  opacity: 0.65;
 }
 
 .spine {

@@ -127,6 +127,11 @@ export const stepPortionToday = computed(() => weekSummary.value.steps.todayShar
 /*  Akce – dny a kroky                                                 */
 /* ------------------------------------------------------------------ */
 
+/** Z dvojice razítek to novější. Razítko se nikdy nesmí snížit. */
+function keepNewer(known: string | undefined, incoming: string): string {
+  return known && known > incoming ? known : incoming
+}
+
 export function ensureDay(date: DateKey): DayLog {
   let day = state.days[date]
   if (!day) {
@@ -136,12 +141,30 @@ export function ensureDay(date: DateKey): DayLog {
   return day
 }
 
-export function setSteps(date: DateKey, steps: number, source: StepSource = 'manual'): void {
+/**
+ * Zapíše kroky za den.
+ *
+ * `at` je razítko změny. Pro ruční zápis platí „teď", ale pro kroky stažené
+ * ze serveru se musí předat čas serveru – jinak by se cizí data tvářila jako
+ * čerstvá místní změna a při dalším odeslání by přepsala serverovou verzi
+ * dne. A protože se den posílá jako celek, přepsala by i odcvičené bloky,
+ * které tenhle telefon nikdy neviděl. Přesně tak se dal ztratit ranní blok
+ * po přihlášení na druhém zařízení.
+ *
+ * Razítko se přitom nikdy nesnižuje: kdyby tu ležela nepřenesená místní
+ * změna, snížené razítko by ji navždy vyloučilo z odeslání.
+ */
+export function setSteps(
+  date: DateKey,
+  steps: number,
+  source: StepSource = 'manual',
+  at?: string,
+): void {
   const day = ensureDay(date)
   day.steps = Math.max(0, Math.round(steps))
   day.stepsSource = source
   day.stepsUpdatedAt = new Date().toISOString()
-  touch(state, 'day', date)
+  touch(state, 'day', date, at ? keepNewer(state.meta.updatedAt[`day:${date}`], at) : undefined)
   // Dopsané kroky do už uzavřeného týdne musí přepočítat dluh – jinak by
   // v knize zůstalo číslo z doby, kdy ta data ještě nebyla zapsaná.
   recalculateFrom(state, date, today.value)

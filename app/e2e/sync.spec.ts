@@ -21,6 +21,7 @@ interface SyncRecord {
 async function fakeServer(
   page: import('@playwright/test').Page,
   records: SyncRecord[] = [],
+  steps: { date: string; steps: number; source: string; updatedAt: string }[] = [],
 ): Promise<{ pushed: SyncRecord[] }> {
   const pushed: SyncRecord[] = []
 
@@ -34,7 +35,7 @@ async function fakeServer(
       pushed.push(...(body?.records ?? []))
       return json({ rev: 42, applied: body?.records?.length ?? 0, skipped: 0, records })
     }
-    if (url.includes('/api/steps')) return json({ steps: [] })
+    if (url.includes('/api/steps')) return json({ steps })
     if (url.includes('/api/sync')) return json({ ok: true, serverSteps: null })
     return json({ ok: true })
   })
@@ -103,5 +104,62 @@ test.describe('synchronizace', () => {
     // Nastavení jde po sekcích – a mezi nimi žádná, která by nesla přihlášení.
     const sections = server.pushed.filter((r) => r.kind === 'settings').map((r) => r.id).sort()
     expect(sections).toEqual(['exercise', 'notifications', 'profile', 'steps'])
+  })
+
+  test('kroky ze serveru nesmí přepsat odcvičený blok', async ({ page, context }) => {
+    // Tohle byla ztráta dat, ne kosmetika. Kroky se stahovaly DŘÍV, než se
+    // vyměnily záznamy. Stažené kroky si přitom založily místní den – a ten
+    // `ensureDay` zakládá s prázdným polem bloků – orazítkovaly ho časem
+    // „teď" a při odeslání ten prázdný den přepsal serverovou verzi
+    // s odcvičeným ranním blokem. Den se totiž posílá jako celek.
+    const today = dayKey(0)
+    await seed(context)
+
+    // Server: ranní odcvičený blok a k tomu kroky za dnešek.
+    const morning = `${today}T07:30:00.000Z`
+    const { pushed } = await fakeServer(
+      page,
+      [
+        {
+          kind: 'day',
+          id: today,
+          updatedAt: morning,
+          payload: {
+            date: today,
+            steps: 0,
+            stepsSource: 'manual',
+            blocks: [
+              {
+                slot: 0,
+                planId: 'rano',
+                completedAt: morning,
+                doneExerciseIds: ['prkno-na-predlokti'],
+                skippedExerciseIds: [],
+              },
+            ],
+          },
+        },
+      ],
+      [{ date: today, steps: 6_200, source: 'shortcut', updatedAt: `${today}T06:00:00.000Z` }],
+    )
+
+    await page.goto('/#/')
+    await ready(page)
+    await page.waitForTimeout(600)
+
+    // Blok musí přežít u sebe…
+    const state = await readState(page)
+    const block = state.days[today]?.blocks?.find((b: { slot: number }) => b.slot === 0)
+    expect(block?.completedAt, 'ranní blok se ztratil v místním stavu').toBeTruthy()
+    expect(state.days[today].steps).toBe(6_200)
+
+    // …a hlavně se nesmí odeslat verze dne, ve které chybí.
+    const bad = pushed.filter(
+      (r) =>
+        r.kind === 'day' &&
+        r.id === today &&
+        !(r.payload as { blocks?: { completedAt?: string }[] })?.blocks?.some((b) => b.completedAt),
+    )
+    expect(bad, 'appka poslala na server den bez odcvičeného bloku').toEqual([])
   })
 })

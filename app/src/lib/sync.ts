@@ -77,6 +77,14 @@ export async function syncNow(force = false): Promise<boolean> {
       activeBlocks(state).map((b) => b.slot),
     )
 
+    // Nejdřív výměna záznamů, teprve pak kroky. Obráceně to bylo nebezpečné:
+    // stažené kroky si vyrobily místní den (`ensureDay` ho zakládá s prázdným
+    // polem bloků) a ten pak odešel na server s čerstvým razítkem. Den se
+    // posílá jako celek, takže tím přepsal serverovou verzi i s odcvičenými
+    // bloky. Takhle už je den v tu chvíli stažený a kroky se do něj jen
+    // doplní.
+    await syncRecords()
+
     // Kroky z Health se berou jako pravda – uživatel je nezapisoval ručně.
     const entries = await pullSteps(21)
     let oldestChanged: string | null = null
@@ -86,7 +94,8 @@ export async function syncNow(force = false): Promise<boolean> {
       // procházku, kterou hodinky nezachytily).
       if (local?.stepsSource === 'manual' && local.steps > entry.steps) continue
       if (local?.steps === entry.steps) continue
-      setSteps(entry.date, entry.steps, 'shortcut')
+      // Razítko serveru, ne „teď" – tohle není místní změna.
+      setSteps(entry.date, entry.steps, 'shortcut', entry.updatedAt)
       if (!oldestChanged || entry.date < oldestChanged) oldestChanged = entry.date
     }
 
@@ -94,8 +103,6 @@ export async function syncNow(force = false): Promise<boolean> {
     // když se appka týden neotevřela. Uzávěrku je pak potřeba přepočítat,
     // jinak by v knize zůstal dluh z dat, která tehdy ještě nebyla k dispozici.
     if (oldestChanged) recalculateFrom(state, oldestChanged, today.value)
-
-    await syncRecords()
 
     return true
   } catch (err) {
@@ -134,6 +141,69 @@ async function syncRecords(): Promise<void> {
   } else if (applied.settingsChanged) {
     recalculateFrom(state, state.settings.startDate, today.value)
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Odeslání změn                                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Jak dlouho se čeká po poslední změně, než se pošle na server.
+ *
+ * Krátce schválně. Dřív se pushovalo jen při startu appky, takže odcvičený
+ * ranní blok ležel v telefonu do doby, než se appka zase otevřela – a kdo se
+ * mezitím přihlásil na notebooku, viděl prázdný den. Pár vteřin stačí na to,
+ * aby se posbíralo víc odškrtnutí za sebou a neposílalo se po každém klepnutí.
+ */
+const PUSH_DELAY_MS = 2000
+let pushTimer: ReturnType<typeof setTimeout> | undefined
+
+/** Odešle změny hned, pokud nějaké jsou. Ticho, když není co nebo kam. */
+async function pushNow(): Promise<void> {
+  clearTimeout(pushTimer)
+  if (!isServerConfigured() || syncing.value) return
+  // Jediná podmínka, která tu má co dělat: opravdu je co poslat. Zároveň to
+  // zabraňuje kolotoči – po úspěšném odeslání se `pushedAt` posune a další
+  // kolo nic nenajde.
+  if (collectChanged(state, state.meta.pushedAt).length === 0) return
+
+  syncing.value = true
+  try {
+    await syncRecords()
+    lastSyncError.value = null
+  } catch (err) {
+    // Bez signálu se cvičit dá. Zkusí se to znovu při další změně nebo startu.
+    lastSyncError.value = (err as Error).message
+  } finally {
+    syncing.value = false
+  }
+}
+
+/** Naplánuje odeslání. Opakované volání odklad posouvá, neplodí další. */
+export function pushSoon(delay = PUSH_DELAY_MS): void {
+  if (!isServerConfigured()) return
+  clearTimeout(pushTimer)
+  pushTimer = setTimeout(() => void pushNow(), delay)
+}
+
+/**
+ * Každá orazítkovaná změna spustí odpočet k odeslání.
+ *
+ * Sleduje se razítkovník, ne celý stav: co nemá razítko, se stejně neposílá,
+ * a odvozené věci (dluhová kniha, milníky) by jinak budily push zbytečně.
+ */
+watch(() => state.meta.updatedAt, () => pushSoon(), { deep: true })
+
+/**
+ * Odchod z appky je poslední šance. Odeslat se to nemusí stihnout – na iOS
+ * bývá záložka zabitá dřív – ale stojí to jedno volání a v půlce případů to
+ * ušetří den čekání na příští spuštění.
+ */
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void pushNow()
+  })
+  window.addEventListener('pagehide', () => void pushNow())
 }
 
 /** Volá se při otevření appky a při návratu z pozadí. */

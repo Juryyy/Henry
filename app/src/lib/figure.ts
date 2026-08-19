@@ -304,18 +304,30 @@ export function limbPath(points: Point[], widths: number[]): string {
       parts.push(capPath(ra >= rb ? a : b, Math.max(ra, rb)))
       continue
     }
-    const nx = -dy / length
-    const ny = dx / length
-    // Všechny podcesty se obtáčejí stejným směrem (proti směru hodin na
-    // obrazovce) a oblouky na koncích míří ven z úseku. Obojí je nutné:
-    // opačné obtočení by u překryvu dvou úseků udělalo díru (výplň se řídí
-    // pravidlem nonzero) a obrácený oblouk by kloub vykousl místo zakulatil.
+    // Hrana kužele je **vnější tečna** obou kruhů, ne kolmé odsazení osy.
+    // Jen tak na sebe hrana a koncový oblouk navazují se spojitou tečnou –
+    // při kolmém odsazení zůstane v místě, kde se šířka mění, drobný zlom.
+    const ux = dx / length
+    const uy = dy / length
+    const cos = (ra - rb) / length
+    const sin = Math.sqrt(1 - cos * cos)
+    // Dva tečné směry: osa pootočená o ±θ.
+    const px = cos * ux - sin * uy
+    const py = cos * uy + sin * ux
+    const mx = cos * ux + sin * uy
+    const my = cos * uy - sin * ux
+    // Na tlustším konci obtáčí oblouk víc než půlkružnici, tam je potřeba
+    // velký oblouk. Obtáčení (sweep 0) je u všech podcest stejné: opačné by
+    // u překryvu dvou úseků udělalo díru, protože výplň se řídí pravidlem
+    // nonzero, a obrácený oblouk by kloub vykousl místo zakulatil.
+    const bigB = ra < rb ? 1 : 0
+    const bigA = ra > rb ? 1 : 0
     parts.push(
-      `M ${fixed(a[0] + nx * ra)},${fixed(a[1] + ny * ra)}` +
-        ` L ${fixed(b[0] + nx * rb)},${fixed(b[1] + ny * rb)}` +
-        ` A ${fixed(rb)} ${fixed(rb)} 0 0 0 ${fixed(b[0] - nx * rb)},${fixed(b[1] - ny * rb)}` +
-        ` L ${fixed(a[0] - nx * ra)},${fixed(a[1] - ny * ra)}` +
-        ` A ${fixed(ra)} ${fixed(ra)} 0 0 0 ${fixed(a[0] + nx * ra)},${fixed(a[1] + ny * ra)} Z`,
+      `M ${fixed(a[0] + ra * px)},${fixed(a[1] + ra * py)}` +
+        ` L ${fixed(b[0] + rb * px)},${fixed(b[1] + rb * py)}` +
+        ` A ${fixed(rb)} ${fixed(rb)} 0 ${bigB} 0 ${fixed(b[0] + rb * mx)},${fixed(b[1] + rb * my)}` +
+        ` L ${fixed(a[0] + ra * mx)},${fixed(a[1] + ra * my)}` +
+        ` A ${fixed(ra)} ${fixed(ra)} 0 ${bigA} 0 ${fixed(a[0] + ra * px)},${fixed(a[1] + ra * py)} Z`,
     )
   }
   // Všechny úseky nulové délky: aspoň kolečko, ať tam něco je.

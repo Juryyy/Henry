@@ -198,13 +198,34 @@ const torso = computed(() => {
   // Řídicí bod je odsazený míň než konce – tím se trup v pase zúží.
   const backWaist = at(edges.back * WAIST)
   const bellyWaist = at(edges.belly * WAIST)
+
+  /**
+   * Zaoblený konec trupu – ramena a pánev. Ostrý roh mezi končetinami,
+   * které mají kulaté klouby, kouká jako přilepený obdélník.
+   *
+   * Kubika s řídicími body posunutými o 4/3 poloměru po ose páteře je běžná
+   * náhrada půlkružnice; odchylka je pod desetinu procenta, tedy hluboko pod
+   * tloušťkou obrysu. Kruhový oblouk by tu byl přesnější, ale musel by se
+   * k němu dopočítat směr obtočení – a ten se u trupu obrací podle toho,
+   * kterým směrem se postavička dívá.
+   */
+  const depth = Math.abs(edges.belly - edges.back)
+  const spine = [p.hip[0] - p.neck[0], p.hip[1] - p.neck[1]]
+  const spineLength = Math.hypot(spine[0], spine[1]) || 1
+  const bulge = ((depth / 2) * 4) / 3
+  const along = (point: Point, sign: number): Point => [
+    point[0] + (spine[0] / spineLength) * bulge * sign,
+    point[1] + (spine[1] / spineLength) * bulge * sign,
+  ]
+
   // Tam po jedné hraně, zpátky po druhé. Stejný řídicí bod jen posunutý –
   // obě hrany tak kopírují páteř a trup se nikde nevyboulí.
   return [
     `M ${xy(back(p.neck))}`,
     `Q ${xy(backWaist(control))} ${xy(back(p.hip))}`,
-    `L ${xy(belly(p.hip))}`,
+    `C ${xy(along(back(p.hip), 1))} ${xy(along(belly(p.hip), 1))} ${xy(belly(p.hip))}`,
     `Q ${xy(bellyWaist(control))} ${xy(belly(p.neck))}`,
+    `C ${xy(along(belly(p.neck), -1))} ${xy(along(back(p.neck), -1))} ${xy(back(p.neck))}`,
     'Z',
   ].join(' ')
 })

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { CATEGORY_TONE, MUSCLE_LABELS } from '@/data/exercises'
+import { blobPath, limbPath, type Point } from '@/lib/figure'
 import type { ExerciseCategory, MuscleId, Muscles } from '@/lib/types'
 
 /**
@@ -66,6 +67,27 @@ const label = computed(() => {
  */
 const FRONT_X = 40
 const BACK_X = 112
+
+/**
+ * Silueta těla ve stoji čelem k divákovi.
+ *
+ * Kreslí se stejným strojkem jako postavička u cviku (`limbPath`), aby to
+ * byl zjevně tentýž člověk – jen jednou v pohybu a jednou při výkladu. Než
+ * to byl slepenec elips, vypadaly ty dva obrázky vedle sebe jako dvě různé
+ * appky.
+ *
+ * Souřadnice jsou vůči středu těla, takže se pravá a levá polovina liší
+ * jen znaménkem.
+ */
+function side(sx: number): { arm: string; leg: string } {
+  const at = (x: number, y: number): Point => [sx * x, y]
+  return {
+    arm: `${limbPath([at(17.5, 34), at(23, 62), at(26, 88)], [12, 9.5, 7])} ${blobPath(at(26.5, 92), 5)}`,
+    leg: limbPath([at(8.5, 92), at(8.5, 130), at(8.5, 162), at(14, 168)], [18, 13, 9, 8]),
+  }
+}
+
+const SIDES = [side(-1), side(1)]
 </script>
 
 <template>
@@ -76,27 +98,21 @@ const BACK_X = 112
       <g v-for="side in (['front', 'back'] as const)" :key="side" :transform="`translate(${side === 'front' ? FRONT_X : BACK_X} 0)`">
         <!-- Silueta. Kreslí se první, svaly leží na ní. -->
         <g class="body">
-          <circle cx="0" cy="13" r="9" />
-          <rect x="-4.5" y="20" width="9" height="11" rx="3" />
+          <path v-for="(part, i) in SIDES" :key="`a${i}`" :d="part.arm" />
+          <path v-for="(part, i) in SIDES" :key="`l${i}`" :d="part.leg" />
           <path
-            d="M -19 34 Q -19 29.5 -13.5 29.5 L 13.5 29.5 Q 19 29.5 19 34 L 14 68 L 16.5 84 Q 16.5 92 10 92 L -10 92 Q -16.5 92 -16.5 84 L -14 68 Z"
+            d="M -19 34 Q -19 29.5 -13.5 29.5 L 13.5 29.5 Q 19 29.5 19 34 L 14 68 L 16.5 84 Q 16.5 94 10 94 L -10 94 Q -16.5 94 -16.5 84 L -14 68 Z"
           />
-          <g v-for="sx in [-1, 1]" :key="sx">
-            <ellipse :cx="sx * 22.5" cy="49" rx="5.2" ry="14" />
-            <ellipse :cx="sx * 25.5" cy="75" rx="4.5" ry="14" />
-            <ellipse :cx="sx * 27" cy="92" rx="4" ry="5" />
-            <ellipse :cx="sx * 8.5" cy="112" rx="8.5" ry="21" />
-            <ellipse :cx="sx * 8.5" cy="148" rx="6" ry="17" />
-            <ellipse :cx="sx * 8.5" cy="169" rx="5.8" ry="3.6" />
-          </g>
+          <path :d="limbPath([[0, 24], [0, 14]], [8, 7])" />
+          <path :d="blobPath([0, 13], 9)" />
         </g>
 
         <!-- Zepředu ------------------------------------------------- -->
         <template v-if="side === 'front'">
           <g v-for="sx in [-1, 1]" :key="sx">
-            <ellipse :class="cls('ramena')" :cx="sx * 17.5" cy="36.5" rx="7.2" ry="7.5" />
+            <ellipse :class="cls('ramena')" :cx="sx * 17.5" cy="36" rx="6" ry="7" />
             <ellipse :class="cls('prsa')" :cx="sx * 8" cy="43" rx="7.8" ry="6.2" />
-            <ellipse :class="cls('biceps')" :cx="sx * 22.5" cy="52" rx="4.6" ry="9.5" />
+            <ellipse :class="cls('biceps')" :cx="sx * 20.5" cy="50" rx="4.4" ry="9.5" />
             <ellipse :class="cls('sikme')" :cx="sx * 11" cy="63" rx="3.4" ry="10" />
             <ellipse :class="cls('ohybace-kycle')" :cx="sx * 7.5" cy="90" rx="6" ry="7" />
             <ellipse :class="cls('kvadriceps')" :cx="sx * 10" cy="112" rx="6" ry="17" />
@@ -125,13 +141,13 @@ const BACK_X = 112
                první, takže vzpřimovače po jejích stranách leží na ní. -->
           <rect :class="cls('patere')" x="-2.2" y="33" width="4.4" height="53" rx="2.2" />
           <g v-for="sx in [-1, 1]" :key="sx">
-            <ellipse :class="cls('ramena')" :cx="sx * 17.5" cy="36.5" rx="7.2" ry="7.5" />
+            <ellipse :class="cls('ramena')" :cx="sx * 17.5" cy="36" rx="6" ry="7" />
             <ellipse :class="cls('mezilopatkove')" :cx="sx * 7.5" cy="40" rx="6" ry="5" />
             <path
               :class="cls('siroky-zadovy')"
-              :d="`M ${sx * 3.5} 46 L ${sx * 15} 44 Q ${sx * 16.5} 56 ${sx * 12} 66 L ${sx * 3.5} 69 Z`"
+              :d="`M ${sx * 3.5} 46 L ${sx * 14} 44 Q ${sx * 15} 56 ${sx * 11.5} 66 L ${sx * 3.5} 69 Z`"
             />
-            <ellipse :class="cls('triceps')" :cx="sx * 22.5" cy="52" rx="4.6" ry="9.5" />
+            <ellipse :class="cls('triceps')" :cx="sx * 20.5" cy="50" rx="4.4" ry="9.5" />
             <rect :class="cls('vzprimovace')" :x="sx > 0 ? 2 : -7.6" y="54" width="5.6" height="30" rx="2.8" />
             <ellipse :class="cls('hyzde')" :cx="sx * 8" cy="90" rx="8" ry="7" />
             <ellipse :class="cls('hamstringy')" :cx="sx * 9" cy="114" rx="6.4" ry="17" />
@@ -180,6 +196,10 @@ const BACK_X = 112
   fill: var(--surface-3);
   stroke: var(--surface);
   stroke-width: 1.2;
+  /* Obrys pod výplní, stejně jako u postavičky – paže se pak od trupu
+     oddělí mezerou místo aby s ním splynula. */
+  paint-order: stroke;
+  stroke-linejoin: round;
 }
 
 .m.on {

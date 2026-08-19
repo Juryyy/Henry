@@ -37,7 +37,9 @@ const STAND: Pose = {
 /** Vleže na zádech, hlavou doleva, kolena pokrčená. */
 const SUPINE: Pose = {
   // Na zádech: obličej míří ke stropu, ať se nepletl s lehem na břiše.
-  look: [0, -1],
+  // Mírně ke špičkám, ne kolmo vzhůru – svislý nos na kulaté hlavě vypadá
+  // jako svíčka, šikmý jako profil obličeje.
+  look: [0.35, -1],
   head: [20, 79],
   neck: [28, 81],
   hip: [50, 82],

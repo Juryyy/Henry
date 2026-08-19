@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getExercise } from '@/data/exercises'
 import { blockEmoji, buildDay, doseLabel } from '@/lib/plan'
@@ -22,11 +22,37 @@ const router = useRouter()
 const plans = computed(() => buildDay(state, today.value))
 const week = computed(() => weekSummary.value)
 
+/**
+ * Odškrtnutí bloku na dvě klepnutí, odznačení taky – ale s otázkou.
+ *
+ * Kolečko není ukazatel, ale přepínač, a sedí hned vedle názvu bloku. Jedno
+ * chybné klepnutí smazalo odcvičený blok i s dobou cvičení a nikde se to
+ * nedalo vrátit. Označit je pořád na jedno klepnutí; zrušit chce potvrzení.
+ */
+const askUndo = ref<number | null>(null)
+let undoTimer: ReturnType<typeof setTimeout> | undefined
+
 function toggleDone(slot: number): void {
   const s = slot as 0 | 1 | 2
-  if (isBlockDone(today.value, s)) uncompleteBlock(today.value, s)
-  else completeBlock(today.value, s, plans.value[slot]!.id)
+  if (!isBlockDone(today.value, s)) {
+    askUndo.value = null
+    completeBlock(today.value, s, plans.value[slot]!.id)
+    return
+  }
+  if (askUndo.value !== slot) {
+    // První klepnutí se jen zeptá a samo se po chvíli vzdá, ať kolečko
+    // nezůstane viset v tázacím stavu do příštího otevření.
+    askUndo.value = slot
+    clearTimeout(undoTimer)
+    undoTimer = setTimeout(() => (askUndo.value = null), 4000)
+    return
+  }
+  clearTimeout(undoTimer)
+  askUndo.value = null
+  uncompleteBlock(today.value, s)
 }
+
+onUnmounted(() => clearTimeout(undoTimer))
 </script>
 
 <template>
@@ -68,11 +94,17 @@ function toggleDone(slot: number): void {
           </div>
           <button
             class="check"
-            :class="{ on: isBlockDone(today, plan.slot) }"
-            :aria-label="`Označit blok ${plan.title} jako hotový`"
+            :class="{ on: isBlockDone(today, plan.slot), ask: askUndo === plan.slot }"
+            :aria-label="
+              !isBlockDone(today, plan.slot)
+                ? `Označit blok ${plan.title} jako hotový`
+                : askUndo === plan.slot
+                  ? `Opravdu zrušit hotový blok ${plan.title}?`
+                  : `Zrušit hotový blok ${plan.title}`
+            "
             @click="toggleDone(plan.slot)"
           >
-            ✓
+            {{ askUndo === plan.slot ? '↩' : '✓' }}
           </button>
         </div>
 
@@ -124,6 +156,14 @@ function toggleDone(slot: number): void {
 }
 
 .check.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* Ptá se, jestli to má fakt zrušit. Barva varování, ne zelená – ať je vidět,
+   že další klepnutí něco smaže. */
+.check.ask {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+  color: var(--warn);
+}
 
 .exercise-list li + li { border-top: 1px solid var(--border); }
 

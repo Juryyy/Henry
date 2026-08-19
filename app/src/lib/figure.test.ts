@@ -7,11 +7,14 @@ import {
   fitView,
   GROUND_Y,
   HEAD_R,
+  limbPath,
   pingPong,
   poseAt,
   spineControl,
   subscribeClock,
+  TORSO_DEPTH,
   torsoEdges,
+  TORSO_WIDTH,
   type Point,
   type Pose,
 } from './figure'
@@ -162,29 +165,113 @@ describe('směr pohledu', () => {
   })
 })
 
+describe('tvar končetiny', () => {
+  const nums = (d: string): number[] =>
+    (d.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number)
+
+  it('každý úsek je vlastní podcesta', () => {
+    // Jedna cesta s víc podcestami schválně: obrys se pak kreslí kolem celé
+    // končetiny a švy v kloubech překryje výplň sousedního úseku.
+    const d = limbPath(
+      [
+        [10, 10],
+        [30, 10],
+        [30, 40],
+      ],
+      [8, 6, 4],
+    )
+    expect(d.match(/M /g)).toHaveLength(2)
+  })
+
+  it('oblouky v kloubech míří ven, ne dovnitř', () => {
+    // Obrácený oblouk vykousne kloub místo zakulacení a překryv dvou úseků
+    // s opačným obtočením udělá pod pravidlem nonzero díru. Přesně tak to
+    // jednou vypadalo: postavička plná černých kolečen.
+    const d = limbPath(
+      [
+        [10, 10],
+        [30, 20],
+        [50, 50],
+      ],
+      [8, 6, 4],
+    )
+    const sweeps = [...d.matchAll(/A [\d.]+ [\d.]+ 0 (\d) (\d)/g)].map((m) => m[2])
+    expect(sweeps.length).toBeGreaterThan(0)
+    expect(new Set(sweeps)).toEqual(new Set(['0']))
+  })
+
+  it('končetina se ke konci zužuje', () => {
+    const start = 9
+    const end = 3
+    const d = limbPath(
+      [
+        [20, 20],
+        [20, 60],
+      ],
+      [start, end],
+    )
+    const n = nums(d)
+    // První bod je hrana u těla, druhý hrana na konci – měří se odstup od osy.
+    expect(Math.abs(n[0]! - 20)).toBeCloseTo(start / 2, 6)
+    expect(Math.abs(n[2]! - 20)).toBeCloseTo(end / 2, 6)
+  })
+
+  it('slepený kloub nevyrobí nesmysl, ale kolečko', () => {
+    // Složená končetina, kde koleno sedí skoro na kyčli: mezi dvěma kruhy,
+    // z nichž je jeden uvnitř druhého, žádný kužel neexistuje.
+    const d = limbPath(
+      [
+        [20, 20],
+        [20, 20.5],
+      ],
+      [9, 3],
+    )
+    expect(d.match(/M /g)).toHaveLength(1)
+    expect(d).not.toMatch(/NaN/)
+  })
+
+  it('nikde nevznikne NaN', () => {
+    for (const figure of Object.values(FIGURES)) {
+      for (const pose of figure.frames) {
+        const d = limbPath([pose.hip, pose.knee, pose.ankle, pose.toe], [7.8, 5.8, 4, 3.2])
+        expect(d).not.toMatch(/NaN|Infinity/)
+      }
+    }
+  })
+})
+
 describe('objem trupu', () => {
   /** Kolik z trupu leží na té straně páteře, kam míří obličej. 0,5 = souměrně. */
   function bellyShare(pose: Pose): number {
     const edges = torsoEdges(pose)!
-    return Math.max(edges.hi, -edges.lo) / (edges.hi - edges.lo)
+    return Math.abs(edges.belly) / (Math.abs(edges.belly) + Math.abs(edges.back))
   }
 
-  it('trup má všude stejnou hloubku, mění se jen jeho poloha', () => {
-    // Kdyby hloubka kolísala, postavičky by v seznamu vedle sebe vypadaly
+  it('trup je z profilu tenký a zepředu široký, nic mimo tenhle rozsah', () => {
+    // Kdyby hloubka utekla mimo, postavičky by v seznamu vedle sebe vypadaly
     // jako různě tlusté podle toho, kam se zrovna dívají.
-    const depths = new Set<number>()
-    for (const figure of Object.values(FIGURES)) {
+    let thinnest = Infinity
+    let widest = 0
+    for (const [id, figure] of Object.entries(FIGURES)) {
       for (const pose of figure.frames) {
         const edges = torsoEdges(pose)!
-        depths.add(Math.round((edges.hi - edges.lo) * 1000))
+        const depth = Math.abs(edges.belly - edges.back)
+        expect(depth, id).toBeGreaterThanOrEqual(TORSO_DEPTH - 0.001)
+        expect(depth, id).toBeLessThanOrEqual(TORSO_WIDTH + 0.001)
+        thinnest = Math.min(thinnest, depth)
+        widest = Math.max(widest, depth)
       }
     }
-    expect(depths.size).toBe(1)
+    // Oba konce rozsahu se v katalogu opravdu vyskytují – jinak by jedna
+    // z těch dvou hodnot byla jen teorie.
+    expect(thinnest).toBeCloseTo(TORSO_DEPTH, 6)
+    expect(widest).toBeCloseTo(TORSO_WIDTH, 6)
   })
 
-  it('z profilu je trup celý vepředu, čelem k divákovi souměrný', () => {
-    // Stoj z profilu: páteř sedí na zadní hraně.
-    expect(bellyShare(FIGURES['brisk-walk']!.frames[0]!)).toBeGreaterThan(0.95)
+  it('z profilu je páteř vzadu, čelem k divákovi je trup souměrný', () => {
+    // Stoj z profilu: většina objemu je před páteří, ale ne všechen –
+    // páteř leží uvnitř těla, ne na jeho zadní hraně.
+    expect(bellyShare(FIGURES['brisk-walk']!.frames[0]!)).toBeCloseTo(0.75, 2)
     // Jumping jacks čelem k divákovi: žádná strana zad se ukázat nedá.
     expect(bellyShare(FIGURES['jumping-jacks']!.frames[0]!)).toBeCloseTo(0.5, 6)
   })
@@ -196,7 +283,7 @@ describe('objem trupu', () => {
       const pose = FIGURES[id]!.frames[0]!
       const edges = torsoEdges(pose)!
       // Kladné = těžiště trupu je nad páteří (y roste dolů).
-      return -(edges.normal[1] * (edges.lo + edges.hi)) / 2
+      return -(edges.normal[1] * (edges.back + edges.belly)) / 2
     }
     expect(above('branicni-dychani')).toBeGreaterThan(1)
     expect(above('lodicka-na-brise')).toBeLessThan(-1)
@@ -248,7 +335,7 @@ describe('objem trupu', () => {
       for (const [index, pose] of figure.frames.entries()) {
         const edges = torsoEdges(pose)!
         const corners: Point[] = []
-        for (const depth of [edges.lo, edges.hi]) {
+        for (const depth of [edges.back, edges.belly]) {
           for (const joint of [pose.neck, pose.hip, spineControl(pose)]) {
             corners.push([joint[0] + edges.normal[0] * depth, joint[1] + edges.normal[1] * depth])
           }

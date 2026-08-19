@@ -105,6 +105,7 @@ function toggleDone(slot: number): void {
 
 <style scoped>
 .thumb {
+  --fig-bg: var(--surface);
   width: 58px;
   flex-shrink: 0;
   opacity: 0.85;

@@ -115,11 +115,13 @@ const OPTIONAL_POINTS = ['elbowFar', 'handFar', 'kneeFar', 'ankleFar', 'toeFar',
 const INTERPOLATED = [...OPTIONAL_POINTS, 'look'] as const
 
 /** Poloměr hlavy. Kreslí se s ním, a počítá se s ním i výřez. */
-export const HEAD_R = 5.2
+export const HEAD_R = 4.7
 /** Jak daleko nos vyčnívá **za okraj** hlavy. */
-const NOSE = 4.6
-/** Jak hluboký je trup. Zhruba jako hlava – piktogram, ne anatomie. */
-export const TORSO_DEPTH = 5
+const NOSE = 3.3
+/** Tloušťka trupu z profilu – od zad k břichu. */
+export const TORSO_DEPTH = 11
+/** Šířka trupu zepředu, od ramene k rameni. Člověk je z profilu užší. */
+export const TORSO_WIDTH = 15
 
 /**
  * Kam se postavička dívá. Chybějící směr se dopočítá prodloužením krku –
@@ -170,7 +172,7 @@ export function faceLine(pose: Pose): [Point, Point] | null {
  *
  * `null` jen u pózy bez délky páteře, kde není co odsazovat.
  */
-export function torsoEdges(pose: Pose): { lo: number; hi: number; normal: Point } | null {
+export function torsoEdges(pose: Pose): { back: number; belly: number; normal: Point } | null {
   const spine = unit([pose.hip[0] - pose.neck[0], pose.hip[1] - pose.neck[1]])
   if (!spine) return null
   const normal: Point = [-spine[1], spine[0]]
@@ -184,8 +186,43 @@ export function torsoEdges(pose: Pose): { lo: number; hi: number; normal: Point 
   // hlava dopředu, ale břicho pořád dolů). Bez toho by z takové polohy vyšel
   // poloviční přesun, tedy nic. Přes střed to pořád projde plynule.
   const shift = Math.max(-1, Math.min(1, turn * 2.5))
-  const center = (TORSO_DEPTH / 2) * shift
-  return { lo: center - TORSO_DEPTH / 2, hi: center + TORSO_DEPTH / 2, normal }
+  // Z profilu je trup tenký, zepředu široký. Mezi tím se to přelévá plynule,
+  // takže se při otočce nezmění šířka skokem.
+  const depth = TORSO_WIDTH + (TORSO_DEPTH - TORSO_WIDTH) * Math.abs(shift)
+  // Páteř leží **uvnitř** těla, zhruba ve čtvrtině jeho hloubky od zad – ne
+  // na jeho zadní hraně. Kdyby byla na hraně, hlava i končetiny by vyrůstaly
+  // ze zad a trup by za postavičkou visel jako přišroubované prkno.
+  const center = (depth / 2) * shift * 0.5
+  const lo = center - depth / 2
+  const hi = center + depth / 2
+  // Která hrana je břicho, se pozná podle znaménka natočení: břicho je vždy
+  // na té straně, kam míří obličej.
+  return shift >= 0 ? { back: lo, belly: hi, normal } : { back: hi, belly: lo, normal }
+}
+
+/**
+ * Kde z trupu vyrůstá paže a noha.
+ *
+ * Ne na páteři: kloub je uvnitř těla, ne na jeho zadní hraně. Kdyby paže
+ * začínala na páteři, trup by za postavičkou visel jako přišroubované prkno
+ * a ramena by nikde nebyla. Takhle vyrůstají končetiny z hmoty trupu.
+ */
+export function torsoJoints(pose: Pose): { shoulder: Point; hip: Point } {
+  const edges = torsoEdges(pose)
+  if (!edges) return { shoulder: pose.neck, hip: pose.hip }
+  const at = (fraction: number, point: Point): Point => {
+    const inset = edges.back + (edges.belly - edges.back) * fraction
+    return [point[0] + edges.normal[0] * inset, point[1] + edges.normal[1] * inset]
+  }
+  // Rameno je blíž k zádům než ke břichu – z profilu leží kloub zhruba
+  // v zadní třetině trupu. Kdyby bylo uprostřed, paže by přes něj vedla
+  // a rozdělila by ho na dva pruhy. Kyčel naopak leží zhruba ve středu pánve.
+  //
+  // A rameno je kousek **pod** krkem: kdyby sedělo v krku, kulatý konec paže
+  // by čouhal nad trup a kolem krku by byl límec z obrysů.
+  const spine = unit([pose.hip[0] - pose.neck[0], pose.hip[1] - pose.neck[1]])
+  const drop: Point = spine ? [pose.neck[0] + spine[0] * 2.6, pose.neck[1] + spine[1] * 2.6] : pose.neck
+  return { shoulder: at(0.32, drop), hip: at(0.45, pose.hip) }
 }
 
 /**
@@ -195,6 +232,107 @@ export function torsoEdges(pose: Pose): { lo: number; hi: number; normal: Point 
 export function faceTarget(pose: Pose): Point | null {
   return faceLine(pose)?.[1] ?? null
 }
+
+/* ------------------------------------------------------------------ */
+/*  Tvar těla                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Šířky jednotlivých částí těla, v jednotkách plátna.
+ *
+ * Odvozeno od hlavy: ta má průměr zhruba 10,5 a u dospělého člověka se do
+ * výšky vejde sedmkrát. Zbytek proporcí sedí na tuhle míru – stehno je
+ * o něco širší než hlava není, lýtko je užší než stehno a tak dál.
+ *
+ * Dvojice je „u těla" → „na konci". Postavička se tím zužuje odshora dolů
+ * po každé končetině, což je ten rozdíl mezi tělem a drátem.
+ */
+export const BODY = {
+  paze: [5.4, 4.2] as [number, number],
+  predlokti: [4.4, 3.2] as [number, number],
+  dlan: 2.3,
+  stehno: [7.8, 5.8] as [number, number],
+  lytko: [5.8, 4] as [number, number],
+  chodidlo: [4.2, 3.2] as [number, number],
+  krk: 6.2,
+  /** Vzdálená polovina těla je o kus tenčí – je dál, tak má být i menší. */
+  dal: 0.84,
+}
+
+const fixed = (n: number): string => n.toFixed(2)
+
+/**
+ * Kulatý konec, když je úsek tak krátký, že z něj kužel udělat nejde.
+ * Bez toho by končetina v ohnuté pozici zmizela.
+ */
+function capPath(center: Point, radius: number): string {
+  const [x, y] = center
+  return (
+    `M ${fixed(x - radius)},${fixed(y)}` +
+    ` A ${fixed(radius)} ${fixed(radius)} 0 1 0 ${fixed(x + radius)},${fixed(y)}` +
+    ` A ${fixed(radius)} ${fixed(radius)} 0 1 0 ${fixed(x - radius)},${fixed(y)} Z`
+  )
+}
+
+/**
+ * Řetěz kloubů jako plný tvar, který se ke konci zužuje.
+ *
+ * Každý úsek je „stadion": dvě rovnoběžné hrany a na obou koncích kulatý
+ * oblouk o poloměru poloviny šířky. Sousední úseky sdílejí ten oblouk
+ * v kloubu, takže se překryjí a spoj není vidět – proto se nemusí počítat
+ * žádné složité zaoblení ohybu.
+ *
+ * Vrací se **jedna** cesta s víc podcestami. To je schválně: obrys se pak
+ * kreslí kolem celé končetiny najednou (přes `paint-order`), a švy uvnitř
+ * překryje výplň sousedního úseku. Kdyby to byly samostatné prvky, každý
+ * díl by měl vlastní obrys a z ruky by bylo párátko z korálků.
+ */
+export function limbPath(points: Point[], widths: number[]): string {
+  const parts: string[] = []
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]!
+    const b = points[i + 1]!
+    const ra = widths[i]! / 2
+    const rb = widths[i + 1]! / 2
+    const dx = b[0] - a[0]
+    const dy = b[1] - a[1]
+    const length = Math.hypot(dx, dy)
+    // Krátký úsek s výrazně různými šířkami: jedno kolečko je celé uvnitř
+    // druhého a kužel mezi nimi neexistuje. Stane se to u složené končetiny,
+    // kde koleno sedí skoro na kyčli. Nakreslí se to větší.
+    if (length <= Math.abs(ra - rb) + 0.01) {
+      parts.push(capPath(ra >= rb ? a : b, Math.max(ra, rb)))
+      continue
+    }
+    const nx = -dy / length
+    const ny = dx / length
+    // Všechny podcesty se obtáčejí stejným směrem (proti směru hodin na
+    // obrazovce) a oblouky na koncích míří ven z úseku. Obojí je nutné:
+    // opačné obtočení by u překryvu dvou úseků udělalo díru (výplň se řídí
+    // pravidlem nonzero) a obrácený oblouk by kloub vykousl místo zakulatil.
+    parts.push(
+      `M ${fixed(a[0] + nx * ra)},${fixed(a[1] + ny * ra)}` +
+        ` L ${fixed(b[0] + nx * rb)},${fixed(b[1] + ny * rb)}` +
+        ` A ${fixed(rb)} ${fixed(rb)} 0 0 0 ${fixed(b[0] - nx * rb)},${fixed(b[1] - ny * rb)}` +
+        ` L ${fixed(a[0] - nx * ra)},${fixed(a[1] - ny * ra)}` +
+        ` A ${fixed(ra)} ${fixed(ra)} 0 0 0 ${fixed(a[0] + nx * ra)},${fixed(a[1] + ny * ra)} Z`,
+    )
+  }
+  // Všechny úseky nulové délky: aspoň kolečko, ať tam něco je.
+  if (parts.length === 0) parts.push(capPath(points[0]!, widths[0]! / 2))
+  return parts.join(' ')
+}
+
+/** Kolečko jako podcesta – dlaň na konci paže, hlava nad krkem. */
+export function blobPath(center: Point, radius: number): string {
+  return capPath(center, radius)
+}
+
+/**
+ * O kolik se trup v pase zúží. Tělo není trubka – hrudník a pánev jsou
+ * širší než pas, a bez toho vypadá postavička jako prkno s hlavou.
+ */
+export const WAIST = 0.82
 
 /** Řídicí bod trupu. Bez vlastního je to střed, tedy rovná záda. */
 export function spineControl(pose: Pose): Point {
@@ -297,7 +435,7 @@ export function fitView(frames: Pose[]): [number, number, number, number] {
     const edges = torsoEdges(pose)
     if (edges) {
       const control = spineControl(pose)
-      for (const depth of [edges.lo, edges.hi]) {
+      for (const depth of [edges.back, edges.belly]) {
         const [bx, by] = [edges.normal[0] * depth, edges.normal[1] * depth]
         include(pose.neck[0] + bx, pose.neck[1] + by)
         include(pose.hip[0] + bx, pose.hip[1] + by)

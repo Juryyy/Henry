@@ -73,7 +73,9 @@ const PRONE: Pose = {
 
 /** Vzpor klečmo („na čtyřech"), čelem doprava. */
 const QUADRUPED: Pose = {
-  look: [0.4, 1],
+  // Pohled do země kousek před dlaně, tedy dolů a mírně dopředu. Dozadu ke
+  // krku by nos mířil rovnou do ramene a z hlavy by byla jen boule.
+  look: [-0.25, 1],
   head: [22, 60],
   neck: [30, 62],
   hip: [52, 62],

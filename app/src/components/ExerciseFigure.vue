@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
+  BODY,
+  blobPath,
   faceLine,
   fitView,
   GROUND_Y,
   HEAD_R,
+  limbPath,
   poseAt,
   spineControl,
   subscribeClock,
   torsoEdges,
+  torsoJoints,
+  WAIST,
   type Figure,
   type Point,
   type Pose,
@@ -18,6 +23,12 @@ import type { ExerciseCategory } from '@/lib/types'
 
 /**
  * Vykreslí postavičku předvádějící cvik.
+ *
+ * Není to čárová figurka, ale silueta: každá končetina je plný tvar, který se
+ * ke konci zužuje, a kolem každého dílu je obrys v barvě podkladu. Ten obrys
+ * je celý trik – bez něj splyne paže s trupem do jedné beztvaré plochy,
+ * protože je to jedna barva přes druhou. Kreslí se přes `paint-order: stroke`,
+ * takže nestojí ani jeden prvek navíc.
  *
  * V seznamech se kreslí **statická** poloha (ta poslední, tedy „jak to má
  * vypadat"), v detailu a v přehrávači se hýbe. Čtyřicet animací v katalogu
@@ -75,20 +86,93 @@ const pose = computed<Pose | null>(() => {
  * Výřez se počítá z pózí, ne z ruky. Zaručuje to, že cvik vleže i ve stoji
  * vyplní obrázek stejně – a hlavně to nejde zapomenout doladit po úpravě dat.
  */
-const viewBox = computed(() => {
+const view = computed<[number, number, number, number]>(() => {
   const frames = props.figure?.frames
-  if (!frames?.length) return '0 0 100 100'
-  return fitView(frames).join(' ')
+  if (!frames?.length) return [0, 0, 100, 100]
+  return fitView(frames)
 })
 
-const xy = (point: Point): string => `${point[0].toFixed(1)},${point[1].toFixed(1)}`
-const line = (points: Point[]): string => points.map(xy).join(' ')
+const viewBox = computed(() => view.value.join(' '))
 
-/** Páteř jako křivka – řídicí bod uprostřed rozhoduje, jestli jsou záda kulatá. */
-const spine = computed(() => {
+const xy = (point: Point): string => `${point[0].toFixed(1)},${point[1].toFixed(1)}`
+
+/* ------------------------------------------------------------------ */
+/*  Díly těla                                                          */
+/* ------------------------------------------------------------------ */
+
+/** Paže i s dlaní na konci. Dlaň je podcesta, takže šev vidět není. */
+function armPath(neck: Point, elbow: Point, hand: Point, far = false): string {
+  const k = far ? BODY.dal : 1
+  const chain = limbPath(
+    [neck, elbow, hand],
+    [BODY.paze[0] * k, BODY.paze[1] * k, BODY.predlokti[1] * k],
+  )
+  return `${chain} ${blobPath(hand, BODY.dlan * k)}`
+}
+
+/** Noha od kyčle po špičku – poslední úsek je chodidlo. */
+function legPath(hip: Point, knee: Point, ankle: Point, toe: Point, far = false): string {
+  const k = far ? BODY.dal : 1
+  return limbPath(
+    [hip, knee, ankle, toe],
+    [BODY.stehno[0] * k, BODY.stehno[1] * k, BODY.lytko[1] * k, BODY.chodidlo[1] * k],
+  )
+}
+
+/** Rameno a kyčel uvnitř trupu, ne na páteři – odtud vedou končetiny. */
+const joints = computed(() => (pose.value ? torsoJoints(pose.value) : null))
+
+const arm = computed(() => {
+  const p = pose.value
+  return p && joints.value ? armPath(joints.value.shoulder, p.elbow, p.hand) : ''
+})
+
+const leg = computed(() => {
+  const p = pose.value
+  return p && joints.value ? legPath(joints.value.hip, p.knee, p.ankle, p.toe) : ''
+})
+
+const armFar = computed(() => {
+  const p = pose.value
+  return p?.elbowFar && p.handFar && joints.value
+    ? armPath(joints.value.shoulder, p.elbowFar, p.handFar, true)
+    : ''
+})
+
+const legFar = computed(() => {
+  const p = pose.value
+  return p?.kneeFar && p.ankleFar && p.toeFar && joints.value
+    ? legPath(joints.value.hip, p.kneeFar, p.ankleFar, p.toeFar, true)
+    : ''
+})
+
+/**
+ * Krk, hlava a nos jako jedna cesta.
+ *
+ * Jedna schválně: obrys se pak kreslí kolem obrysu celé hlavy, ne kolem
+ * každého kousku zvlášť. Nos s vlastním obrysem vypadá jako nalepený zobák,
+ * ne jako profil obličeje.
+ */
+const head = computed(() => {
   const p = pose.value
   if (!p) return ''
-  return `M ${xy(p.neck)} Q ${xy(spineControl(p))} ${xy(p.hip)}`
+  const parts = [blobPath(p.head, HEAD_R)]
+  const face = faceLine(p)
+  // Nos je krátký klín od středu hlavy ven. Delší z něj dělá zobák –
+  // u ležících pozic je hlava malá a všechno navíc je hned vidět.
+  if (face) parts.push(limbPath([p.head, face[1]], [HEAD_R * 0.78, 1.5]))
+  return parts.join(' ')
+})
+
+/**
+ * Krk zvlášť, a kreslí se **pod** trupem.
+ *
+ * Kdyby byl v jedné cestě s hlavou, jeho obrys by přeťal trup a kolem krku
+ * by byl límec. Takhle spodek krku zmizí v hrudníku, jak má.
+ */
+const neck = computed(() => {
+  const p = pose.value
+  return p ? limbPath([p.neck, p.head], [BODY.krk, BODY.krk * 0.82]) : ''
 })
 
 /**
@@ -109,21 +193,42 @@ const torso = computed(() => {
     const [dx, dy] = [edges.normal[0] * depth, edges.normal[1] * depth]
     return (point: Point): Point => [point[0] + dx, point[1] + dy]
   }
-  const back = at(edges.lo)
-  const belly = at(edges.hi)
+  const back = at(edges.back)
+  const belly = at(edges.belly)
+  // Řídicí bod je odsazený míň než konce – tím se trup v pase zúží.
+  const backWaist = at(edges.back * WAIST)
+  const bellyWaist = at(edges.belly * WAIST)
   // Tam po jedné hraně, zpátky po druhé. Stejný řídicí bod jen posunutý –
   // obě hrany tak kopírují páteř a trup se nikde nevyboulí.
   return [
     `M ${xy(back(p.neck))}`,
-    `Q ${xy(back(control))} ${xy(back(p.hip))}`,
+    `Q ${xy(backWaist(control))} ${xy(back(p.hip))}`,
     `L ${xy(belly(p.hip))}`,
-    `Q ${xy(belly(control))} ${xy(belly(p.neck))}`,
+    `Q ${xy(bellyWaist(control))} ${xy(belly(p.neck))}`,
     'Z',
   ].join(' ')
 })
 
-/** Nos: úsečka od okraje hlavy ven. Null u pohledu na diváka. */
-const face = computed(() => (pose.value ? faceLine(pose.value) : null))
+/**
+ * Rýha zad. Vede uvnitř siluety kousek od zadní hrany, takže je vidět, kudy
+ * páteř běží a kterým směrem se ohýbá – u kočičího hřbetu i u předklonu je to
+ * ta jediná informace, kvůli které se ten cvik dělá.
+ */
+const spine = computed(() => {
+  const p = pose.value
+  if (!p) return ''
+  const edges = torsoEdges(p)
+  if (!edges) return ''
+  const inset = edges.back + (edges.belly - edges.back) * 0.22
+  const at = (depth: number) => {
+    const [dx, dy] = [edges.normal[0] * depth, edges.normal[1] * depth]
+    return (point: Point): Point => [point[0] + dx, point[1] + dy]
+  }
+  const edge = at(inset)
+  // Rýha kopíruje zúžení v pase, jinak by v půlce vylezla z těla ven.
+  const waist = at(inset * WAIST)
+  return `M ${xy(edge(p.neck))} Q ${xy(waist(spineControl(p)))} ${xy(edge(p.hip))}`
+})
 
 /** Rekvizita se kreslí pod postavu, ať ji nepřekrývá. */
 const prop = computed(() => pose.value?.prop ?? null)
@@ -144,6 +249,11 @@ const strapEnds = computed<[Point, Point] | null>(() => {
     :aria-label="figure?.alt ?? 'Provedení cviku'"
     preserveAspectRatio="xMidYMid meet"
   >
+    <!-- Vlastní podklad. Obrys siluety je v jeho barvě, takže musí být jisté,
+         co je za postavičkou – jinak by kolem ní byla svatozář v barvě, která
+         se k pozadí karty nehodí. -->
+    <rect class="backdrop" :x="view[0]" :y="view[1]" :width="view[2]" :height="view[3]" />
+
     <!-- Země. Bez ní není poznat, jestli cvik probíhá vleže, nebo ve stoji. -->
     <line class="ground" :x1="-40" :y1="GROUND_Y" :x2="140" :y2="GROUND_Y" />
 
@@ -164,35 +274,16 @@ const strapEnds = computed<[Point, Point] | null>(() => {
     <!-- Vzdálená ruka a noha jsou šedé, ne jen průhlednější: takhle je vidět,
          která polovina těla je blíž k divákovi, a u střídavých cviků (pochod,
          mrtvý brouk) se dá sledovat, co dělá která strana. -->
-    <template v-if="pose.elbowFar && pose.handFar">
-      <polyline class="limb far paze" :points="line([pose.neck, pose.elbowFar])" />
-      <polyline class="limb far predlokti" :points="line([pose.elbowFar, pose.handFar])" />
-    </template>
-    <template v-if="pose.kneeFar && pose.ankleFar && pose.toeFar">
-      <polyline class="limb far stehno" :points="line([pose.hip, pose.kneeFar])" />
-      <polyline class="limb far lytko" :points="line([pose.kneeFar, pose.ankleFar, pose.toeFar])" />
-    </template>
+    <path v-if="legFar" class="part far" :d="legFar" />
+    <path v-if="armFar" class="part far" :d="armFar" />
 
-    <!-- Trup. Kreslí se jako první, takže páteř i končetiny zůstanou nad ním. -->
-    <path v-if="torso" class="belly" :d="torso" />
+    <path class="part" :d="neck" />
+    <path v-if="torso" class="part" :d="torso" />
+    <path v-if="spine" class="spine" :d="spine" />
 
-    <!-- Krk. Bez něj hlava u prohnutých pozic viditelně odplouvá od trupu. -->
-    <line class="limb neck" :x1="pose.neck[0]" :y1="pose.neck[1]" :x2="pose.head[0]" :y2="pose.head[1]" />
-    <!-- Páteř. Nejsilnější čára obrázku – u předklonu i kočičího hřbetu je
-         tak vidět, kde jsou záda a kterým směrem se ohýbají. -->
-    <path class="limb spine" :d="spine" />
-    <!-- Každá končetina ve dvou dílech, aby mohla být blíž k tělu silnější:
-         stehno je tlustší než lýtko a paže než předloktí. Jedna čára stejné
-         tloušťky od kyčle po špičku vypadá jako drát, ne jako noha. -->
-    <polyline class="limb stehno" :points="line([pose.hip, pose.knee])" />
-    <polyline class="limb lytko" :points="line([pose.knee, pose.ankle, pose.toe])" />
-    <polyline class="limb paze" :points="line([pose.neck, pose.elbow])" />
-    <polyline class="limb predlokti" :points="line([pose.elbow, pose.hand])" />
-
-    <!-- Dlaň. Konec čáry se ztrácí, tečka ne – a u cviků, kde na poloze rukou
-         záleží (provlékání, dotyk ramen), je to ta informace, kterou hledáš. -->
-    <circle v-if="pose.handFar" class="palm far" :cx="pose.handFar[0]" :cy="pose.handFar[1]" r="2.1" />
-    <circle class="palm" :cx="pose.hand[0]" :cy="pose.hand[1]" r="2.1" />
+    <path class="part" :d="leg" />
+    <path class="part" :d="arm" />
+    <path class="part" :d="head" />
 
     <line
       v-if="strapEnds"
@@ -214,18 +305,6 @@ const strapEnds = computed<[Point, Point] | null>(() => {
       :x2="pose.hand[0] + 9"
       :y2="pose.hand[1] + 3"
     />
-
-    <!-- Menší než poloměr, se kterým počítá výřez – radši trochu místa navíc
-         než hlava odříznutá o okraj. -->
-    <circle class="head" :cx="pose.head[0]" :cy="pose.head[1]" :r="HEAD_R" />
-    <line
-      v-if="face"
-      class="face"
-      :x1="face[0][0]"
-      :y1="face[0][1]"
-      :x2="face[1][0]"
-      :y2="face[1][1]"
-    />
   </svg>
 </template>
 
@@ -239,77 +318,37 @@ const strapEnds = computed<[Point, Point] | null>(() => {
   aspect-ratio: 3 / 2;
 }
 
-.limb {
-  fill: none;
-  stroke: var(--fig, var(--accent));
-  stroke-width: 2.9;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.backdrop {
+  fill: var(--fig-bg, var(--bg-soft));
 }
 
-/* Zúžení směrem od těla. Kulaté konce dva díly spojí, takže na loketu
-   ani na koleni není vidět schod. */
-.stehno { stroke-width: 4.4; }
-.lytko { stroke-width: 3.2; }
-.paze { stroke-width: 3.4; }
-.predlokti { stroke-width: 2.6; }
-
-/* Páteř je nejsilnější čára obrázku – ta se má číst první. */
-.spine {
-  stroke-width: 4;
-}
-
-/* Trup. Plná barva, ne průsvit: průsvitná plocha na tmavém pozadí ztmavne
-   a vypadá jako stín pod postavou, ne jako tělo. Že jde o břišní stranu,
-   je poznat z tvaru – vyboulená je vždycky ta, kam míří obličej. */
-.belly {
-  /* O chlup ustoupená barva, ne plná. Paže, která se při chůzi houpe dopředu,
-     jinak zmizí v trupu – obojí je jedna plocha téhož odstínu. Takhle je
-     ruka pořád vidět a trup zůstane tělem, ne siluetou navíc. */
-  fill: color-mix(in srgb, var(--fig, var(--accent)) 76%, var(--bg-soft));
-  /* Obrys tou samou barvou jen kvůli zakulacení rohů – ostrý roh u ramene
-     a u pánve vypadá jako bedna, ne jako trup. */
-  stroke: color-mix(in srgb, var(--fig, var(--accent)) 76%, var(--bg-soft));
-  stroke-width: 2.2;
-  stroke-linejoin: round;
-}
-
-.palm {
+/*
+ * Jeden díl těla. `paint-order: stroke` znamená „nejdřív obrys, pak výplň",
+ * takže z obrysu zůstane venku jen jeho vnější polovina – vznikne mezera
+ * proti tomu, co leží pod dílem. Přesně to dělá ze slepence ploch tělo:
+ * paže přes trup je pak vidět jako paže, ne jako díra.
+ */
+.part {
   fill: var(--fig, var(--accent));
-}
-
-.palm.far {
-  fill: var(--text-faint);
-  opacity: 0.75;
-}
-
-.neck {
-  stroke-width: 3.2;
+  stroke: var(--fig-bg, var(--bg-soft));
+  stroke-width: 2;
+  stroke-linejoin: round;
+  paint-order: stroke;
 }
 
 /* Vzdálená polovina těla: neutrální šedá, ne bledší varianta téže barvy.
    Rozdíl barvy nese informaci („tahle je ta druhá“), pouhá průhlednost ne. */
 .far {
-  stroke: var(--text-faint);
-  opacity: 0.75;
+  fill: var(--text-faint);
+  opacity: 0.85;
 }
 
-/* Vzdálená polovina je o chlup tenčí – je dál, tak má být i menší. */
-.far.stehno { stroke-width: 3.8; }
-.far.lytko { stroke-width: 2.8; }
-.far.paze { stroke-width: 3; }
-.far.predlokti { stroke-width: 2.3; }
-
-.head {
-  fill: var(--fig, var(--accent));
-}
-
-/* Nos. Krátká čárka stačí – na piktogramu je směr pohledu to jediné,
-   co z obličeje potřebuješ. */
-.face {
-  stroke: var(--fig, var(--accent));
-  stroke-width: 2.6;
+.spine {
+  fill: none;
+  stroke: var(--fig-bg, var(--bg-soft));
+  stroke-width: 1.5;
   stroke-linecap: round;
+  opacity: 0.5;
 }
 
 .ground {

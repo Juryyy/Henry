@@ -138,6 +138,9 @@ const doseText = computed(() => {
 
 /* Ukázka nemá zabrat půl obrazovky – pod ní má být hned první krok postupu. */
 .demo :deep(.figure) {
+  /* Postavička si maluje vlastní podklad a v jeho barvě má i obrys. Musí
+     tedy vědět, na čem leží – jinak by kolem ní byl tmavý obdélník. */
+  --fig-bg: var(--surface);
   max-width: 320px;
   margin: 0 auto;
 }

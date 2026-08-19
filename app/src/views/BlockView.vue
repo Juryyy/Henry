@@ -329,6 +329,7 @@ const setLabel = computed(() => {
 
 <style scoped>
 .demo {
+  --fig-bg: var(--surface);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r);
